@@ -55,21 +55,23 @@ func _ready() -> void:
 	refresh_all()
 
 	# 启动横幅 —— 同时也是"场景确实加载了"的证据
-	print("[Star Game] M0 启动 · 引擎 %s · 农场 %d×%d 格 · %s" % [
+	print("[Star Game] M0.5 启动 · 引擎 %s · 农场 %d×%d 格 · %s" % [
 		Engine.get_version_info().get("string", "unknown"),
 		FIELD_SIZE.x,
 		FIELD_SIZE.y,
-		"左键操作 / Q·E 转视角 / 滚轮缩放 / 1-9 换种子 / F10 过夜 / F5 存档 / F9 读档",
+		"左键用手持物 / 1-3 锄头·水壶·镰刀 / 4-9·0·-·= 选种子 / Q·E 转视角 / 滚轮缩放 / F10 过夜 / ESC 菜单",
 	])
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not event.is_action_pressed("use_tool"):
+	if not event.is_action_pressed("use_item"):
 		return
 	var cell: Vector2i = pick_cell()
 	if cell == NO_CELL:
 		return
-	var message: String = GameManager.use_tool(cell)
+	# 【不要在这里判断"该翻地还是该浇水"】那是规则，属于 L3。
+	#   表现层只负责"把点击翻译成一个格位"，然后交给 GameManager 分派。
+	var message: String = GameManager.use_item(cell)
 	EventBus.toast.emit(message)
 	get_viewport().set_input_as_handled()
 

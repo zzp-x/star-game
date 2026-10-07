@@ -48,8 +48,12 @@ signal tile_changed(cell: Vector2i)
 
 signal money_changed(amount: int)
 signal stamina_changed(current: int, maximum: int)
-## 玩家换了手上的种子（按 1~9）。UI 据此刷新快捷栏的高亮。
-signal crop_selected(crop_id: String)
+## 玩家换了手持格位（按数字键 / 滚轮）。UI 据此刷新快捷栏高亮与手持物标签。
+##
+## 【为什么是"格位下标"而不是"作物 id"】手上有可能是工具，不一定是种子。
+##   发下标是唯一能同时表达"第几格"和"手上是什么"的形式；
+##   想知道具体是什么，调用方去 `GameManager.selected_entry()` 取。
+signal slot_selected(slot: int)
 
 # ── 存档 ─────────────────────────────────────────────────
 

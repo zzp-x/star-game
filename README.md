@@ -102,12 +102,13 @@ godot --headless -s addons/gut/gut_cmdln.gd -gexit    # 跑全部测试
 | --- | --- |
 | 移动 | `W A S D`（**相对相机方向**） |
 | 跑步 | `Shift`（按住） |
-| 使用工具 / 交互 | `鼠标左键`（作用于鼠标指向的格子） |
+| 使用手持物 | `鼠标左键`（作用于鼠标指向的格子） |
 | 旋转相机 | `Q` / `E`（90° 分步） |
 | 缩放 | `鼠标滚轮` |
 | 边缘平移 | 鼠标移到屏幕边缘 |
-| 切换种子 | `1` – `9`（共 12 格快捷栏；当前 9 种作物占前 9 格） |
-| 帮助 | `F1`（开关右上角帮助面板） |
+| 手持格位 | `1`–`9`、`0`、`-`、`=`（共 12 格） |
+| 菜单 / 退出 | `ESC`（也可点右上角「菜单」按钮） |
+| 帮助 | `F1`（开关左上角帮助面板） |
 | 过夜 | `F10` |
 | 存档 / 读档 | `F5` / `F9` |
 
@@ -118,22 +119,28 @@ godot --headless -s addons/gut/gut_cmdln.gd -gexit    # 跑全部测试
 > 让角色面朝移动方向必须用 `atan2(−dir.x, −dir.z)`；写成 `atan2(dir.x, dir.z)`
 > 会把角色的**背面**对着前进方向 —— 表现为"倒着走"，而且很容易看漏。
 
-> ⚠️ **输入映射表就是事实来源**：`tool_1`…`tool_9` 这些动作定义在 `project.godot` 的
+> ⚠️ **输入映射表就是事实来源**：`tool_1`…`tool_12` 这些动作定义在 `project.godot` 的
 > `[input]` 段，代码通过 `InputMap` 读它们，**不要**图省事直接在代码里比 `Key` 常量。
 > 那样映射表会变成摆设 —— 别人照着它改键，游戏里毫无变化，排查到怀疑人生。
-> 加新作物时记得同步加 `tool_10`（`test/integration/test_input_map.gd` 会拦住你）。
+> 这个项目已经真的踩过两次：先是只有 `tool_1`~`tool_5`，扩到 12 格后
+> `tool_10`~`tool_12` 又一次成为缺口（`test/integration/test_input_map.gd` 会拦住你）。
 
 
-**M0 的核心闭环**（一个键跑通）：
+**核心闭环**（手持什么，就只能做什么）：
 
 ```
-左键点草地 → 翻地
-再左键     → 播种
-再左键     → 浇水（土壤变深色）
-F10        → 过夜（下雨天会自动浇水）
-重复 4 次  → 芜菁成熟（变成金色发光）
-左键       → 收获，金币增加
+按 1（锄头）    左键点草地 → 翻地
+按 4（芜菁种子）左键点已翻土 → 播种
+按 2（洒水壶）  左键点已播种的土 → 浇水（土壤变深色）
+F10             → 过夜（下雨天会自动浇水）
+重复 4 次       → 芜菁成熟（变成金色发光）
+按 3（镰刀）    左键点成熟作物 → 收获，金币增加
 ```
+
+> 快捷栏布局：**前 3 格是工具（锄头 / 洒水壶 / 镰刀），后 9 格是种子**。
+> 拿错工具时不会"顺便帮你做了"，而是明确提示该换哪件 ——
+> 这是刻意的：M0 的「左键智能操作」虽然上手快，但快捷栏形同虚设，
+> 玩家的选择没有任何意义。
 
 ---
 
@@ -161,7 +168,7 @@ godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://test/integration -gexit
 godot --headless -s addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_grid.gd -gexit
 ```
 
-**当前状态：6 个测试脚本 · 72 个测试 · 260 条断言 · 全部通过。**
+**当前状态：8 个测试脚本 · 106 个测试 · 463 条断言 · 全部通过。**
 
 > **单元测试的测试对象不启动场景树、不渲染任何东西、不需要任何素材。**
 > 因为游戏规则全部写在 `scripts/core/` 的纯逻辑类里。这是架构最重要的一条回报。
@@ -201,25 +208,27 @@ star-game/
 ├─ assets/                # 所有素材（3D 模型统一用 GLB/glTF）
 │  └─ CREDITS.md          # ★ 素材授权与来源
 ├─ data/                  # 数据驱动：Resource 实例（.tres）
-├─ scenes/                # Godot 场景（.tscn）
+├─ scenes/                # Godot 场景（.tscn）；`_debug_shot.*` 只用于实机截图验收
 ├─ scripts/
 │  ├─ autoload/           # L3 单例：EventBus / GameManager / TimeManager / SaveManager
 │  ├─ core/               # ★ L2 纯逻辑：规则都在这里，可 GUT 直接测
-│  ├─ data/               # L1 数据：CropData / CropDatabase（含 icon_color）
+│  │                      #   含 Hotbar / HotbarEntry（快捷栏布局）
+│  ├─ data/               # L1 数据：CropData / ToolData 及各自数据库（含 icon_color）
 │  ├─ actors/
-│  │  ├─ player.gd        #   角色移动 + 朝向（−Z 约定）+ 走路起伏
+│  │  ├─ player.gd        #   角色移动 + 朝向（−Z 约定）+ 走路动画（绕关节摆动）
 │  │  └─ camera_rig.gd    #   固定斜俯视相机，Q/E 90° 分步旋转
 │  ├─ world/
 │  │  ├─ farm_view.gd     #   射线拾取格子 + 按状态刷新作物外观
 │  │  ├─ proc_textures.gd #   程序化草地/农田格线贴图（零图片依赖）
 │  │  └─ scenery.gd       #   树/灌木/石头/栅栏，固定种子可复现
 │  └─ ui/
-│     ├─ ui_theme.gd      #   星露谷配色 + 木框羊皮纸 9-slice 面板
-│     ├─ ui_icon.gd       #   全部图标用 _draw() 手绘（作物/金币/天气/季节）
+│     ├─ ui_theme.gd      #   星露谷配色 + 木框羊皮纸 9-slice 面板 + 按钮样式
+│     ├─ ui_icon.gd       #   全部图标用 _draw() 手绘（作物/金币/天气/季节/工具）
 │     ├─ hud.gd           #   HUD 装配 + 按 1080p 基准缩放 + 帮助面板
 │     ├─ hud_status.gd    #   右上：日期 / 时钟 / 天气 / 金币
-│     ├─ hud_hotbar.gd    #   底部居中：12 格快捷栏
+│     ├─ hud_hotbar.gd    #   底部居中：12 格快捷栏（前 3 格工具 + 9 格种子）
 │     ├─ hud_energy.gd    #   右下：体力条
+│     ├─ pause_menu.gd    #   独立 CanvasLayer：ESC 呼出，继续/保存/退出
 │     └─ hud_toast.gd     #   浮动提示（自己管生命周期）
 └─ test/
    ├─ unit/               # GUT 单元测试（规则对不对）

@@ -9,32 +9,36 @@ extends Node
 ##
 ## 【为什么表现层只调这里】FarmView 是 3D 节点脚本，没法单测。
 ##   规则留在 FarmGrid / CropData，FarmView 只负责"把状态画出来"（见 DESIGN.md §4.1）。
+##
+## 【手持物纪律】`use_item()` 是鼠标左键的唯一入口，它只做一件事：
+##   拿 `selected_entry()` 去分派。**不要让表现层自己判断"该翻地还是该浇水"** ——
+##   那等于把规则搬到 3D 节点里，测试再也够不着。
 
 const INITIAL_MONEY: int = 500
 const MAX_STAMINA: int = 270
-## 每种操作消耗的体力（见 DESIGN.md §3.6）
-const STAMINA_TILL: int = 2
-const STAMINA_WATER: int = 2
+## 播种消耗的体力。工具的消耗写在 ToolData.stamina_cost 里（跟着工具走），
+## 因为"同一件事换把工具代价不同"是工具的属性，不是编排层的属性。
 const STAMINA_PLANT: int = 1
-const STAMINA_HARVEST: int = 1
 
-## 快捷栏按键动作（project.godot 里映射到数字键 1…9）。
+## 快捷栏按键动作（project.godot 里映射到 1…9、0、-、=）。
 ## 顺序即格位顺序：TOOL_ACTIONS[0] 对应第 1 格。
-## 数量必须 ≥ 可选种子数，否则末尾的种子没有快捷键 —— test_input_map.gd 会检查。
+## 数量必须 == Hotbar.SLOT_COUNT，否则末几格没有快捷键 —— test_input_map.gd 会检查。
 const TOOL_ACTIONS: Array[StringName] = [
-	&"tool_1", &"tool_2", &"tool_3", &"tool_4", &"tool_5",
-	&"tool_6", &"tool_7", &"tool_8", &"tool_9",
+	&"tool_1", &"tool_2", &"tool_3", &"tool_4", &"tool_5", &"tool_6",
+	&"tool_7", &"tool_8", &"tool_9", &"tool_10", &"tool_11", &"tool_12",
 ]
 ## 调试用：按一下就过一天，省得等时钟
 const ACTION_ADVANCE_DAY: StringName = &"debug_advance_day"
 
 ## 农场状态（L2）
 var farm: FarmGrid = FarmGrid.new()
+## 快捷栏布局（L2）：3 件工具 + 9 种种子
+var hotbar: Hotbar = Hotbar.new()
 var money: int = INITIAL_MONEY
 var stamina: int = MAX_STAMINA
 
-## 当前选中的种子 id，按 1–9 切换
-var selected_crop_id: String = "parsnip"
+## 当前手持的格位下标（0 起）。开局是 0 号格 = 锄头 —— 第一天第一件事就是开垦。
+var selected_slot: int = 0
 ## 收获产出数量的随机源（可 seed，便于复现）
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -77,7 +81,10 @@ func _unhandled_input(event: InputEvent) -> void:
 ##   写成 `keycode - KEY_1` 的话，输入映射表就变成了一份"看起来有用其实没人读"的摆设 ——
 ##   别人照着映射表改了键，游戏里毫无变化，会排查到怀疑人生。
 ##   走动作还有一个实际好处：将来做按键重绑定（Options 菜单）不用回来改这里。
-##   代价是动作数量必须与可选项数量对得上 —— 由 test_input_map.gd 守着。
+##   代价是动作数量必须与格位数对得上 —— 由 test_input_map.gd 守着。
+##
+## 【为什么第 10~12 格是 0 / - / =】1…9 不够 12 格用。这是星露谷的老办法，
+##   玩家的肌肉记忆里就有；比另发明一套（比如 F1~F3）更容易猜。
 func slot_for_event(event: InputEvent) -> int:
 	var index: int = 0
 	while index < TOOL_ACTIONS.size():
@@ -106,8 +113,15 @@ func water(cell: Vector2i) -> bool:
 	return true
 
 
+## 播种。crop_id 留空表示"用手上正拿着的种子"。
+##
+## 【为什么保留 crop_id 参数】测试和将来的"批量播种/系统自动补种"都需要
+##   绕过手持物指定种子。传了 id 就以 id 为准。
 func plant(cell: Vector2i, crop_id: String = "") -> bool:
-	var id: String = crop_id if crop_id != "" else selected_crop_id
+	var id: String = crop_id if crop_id != "" else _held_seed_id()
+	if id == "":
+		# 手上不是种子 —— 这是合法状态（比如拿着锄头），不算错误
+		return false
 	var data: CropData = CropDatabase.get_crop(id)
 	if data == null:
 		return false
@@ -150,58 +164,119 @@ func harvest(cell: Vector2i) -> int:
 	return amount
 
 
-## 只用鼠标左键一个键的「智能操作」，M0 手感验证用。
-## 优先级：可收获 → 可播种 → 未翻地则翻地 → 已翻地未浇水则浇水
+## 鼠标左键入口：用手持物作用在格子上。
+##
+## 【核心规则 · M0.5 起】手持什么，就只能做什么：
+##   格 1 锄头   → 只能翻地
+##   格 2 洒水壶 → 只能浇水
+##   格 3 镰刀   → 只能收割成熟作物
+##   格 4+ 种子  → 只能播种
+##
+##   拿错工具时**不会"顺便帮你做了"**，而是明确告诉你该换哪件。
+##   这是刻意的：M0 的「左键智能操作」虽然上手快，但快捷栏形同虚设 ——
+##   手上拿什么跟能做什么毫无关系，玩家的选择没有意义。
 ##
 ## 【纪律】先校验、再扣体力、最后执行 —— 顺序不能反。
 ##   原来的写法是「先 _spend 再 plant」，而 plant 会因季节白名单失败，
 ##   结果就是「种不下去，但体力已经扣了，提示还写着体力不足」。
-func use_tool(cell: Vector2i) -> String:
-	var tile: FarmTile = farm.peek(cell)
-
-	# ① 成熟作物：收获
-	if tile != null and tile.has_crop():
-		var crop: CropData = CropDatabase.get_crop(tile.crop_id)
-		if crop != null and crop.is_mature(tile.growth):
-			if not _spend(STAMINA_HARVEST):
-				return "体力不足"
-			var amount: int = harvest(cell)
-			if amount > 0:
-				add_money(amount * crop.sell_price)
-				return "收获 %s ×%d（+%d G）" % [crop.display_name, amount, amount * crop.sell_price]
-			return "什么都没收到"
-
-	# ② 未翻地：翻地
-	if tile == null or tile.state == FarmTile.State.UNTILLED:
-		if not _spend(STAMINA_TILL):
-			return "体力不足"
-		if till(cell):
-			return "翻地"
-		return "这里翻不了"
-
-	# ③ 已翻地但空着：播种
-	if tile.crop_id == "":
-		var seed: CropData = selected_crop()
-		if seed == null:
-			return "没有选中的种子"
-		# 季节白名单要在扣体力之前判 —— 否则"种不下去"还会白扣体力（见上面的纪律）
-		if not seed.grows_in_season(TimeManager.clock.season):
-			return "%s 不能在%s播种" % [seed.display_name, TimeManager.clock.season_name()]
-		if not _spend(STAMINA_PLANT):
-			return "体力不足"
-		if plant(cell):
-			return "播种 %s" % seed.display_name
-		return "这里种不下去"
-
-	# ④ 已播种但没浇水：浇水
-	if tile.state == FarmTile.State.TILLED:
-		if not _spend(STAMINA_WATER):
-			return "体力不足"
-		if water(cell):
-			return "浇水"
-		return "这里不用浇水"
-
+func use_item(cell: Vector2i) -> String:
+	var entry: HotbarEntry = selected_entry()
+	if entry == null or entry.is_empty():
+		return "这一格是空的"
+	if entry.is_tool():
+		return _use_tool(cell, entry)
+	if entry.is_seed():
+		return _use_seed(cell, entry)
 	return "无事可做"
+
+
+func _use_tool(cell: Vector2i, entry: HotbarEntry) -> String:
+	match entry.verb:
+		ToolData.Verb.TILL:
+			return _till_with(cell, entry)
+		ToolData.Verb.WATER:
+			return _water_with(cell, entry)
+		ToolData.Verb.HARVEST:
+			return _harvest_with(cell, entry)
+	# 加了新工具却忘了在这里处理 —— 明说，而不是静默地什么都不发生
+	return "%s 暂时用不了" % entry.label
+
+
+func _till_with(cell: Vector2i, entry: HotbarEntry) -> String:
+	var tile: FarmTile = farm.peek(cell)
+	if tile != null and not tile.is_tillable():
+		if tile.has_crop():
+			return "这块地种着 %s" % _crop_name(tile.crop_id)
+		return "这块地已经翻好了"
+	if not _spend(_cost_of(entry)):
+		return "体力不足"
+	if till(cell):
+		return "翻地"
+	return "这里翻不了"
+
+
+func _water_with(cell: Vector2i, entry: HotbarEntry) -> String:
+	var tile: FarmTile = farm.peek(cell)
+	if tile == null or tile.state == FarmTile.State.UNTILLED:
+		return "要先用锄头翻地"
+	if tile.state == FarmTile.State.WATERED:
+		return "已经浇过水了"
+	if not _spend(_cost_of(entry)):
+		return "体力不足"
+	if water(cell):
+		return "浇水"
+	return "这里不用浇水"
+
+
+func _harvest_with(cell: Vector2i, entry: HotbarEntry) -> String:
+	var tile: FarmTile = farm.peek(cell)
+	if tile == null or not tile.has_crop():
+		return "这里没有可以收割的作物"
+	var data: CropData = CropDatabase.get_crop(tile.crop_id)
+	if data == null:
+		return "这里没有可以收割的作物"
+	if not data.is_mature(tile.growth):
+		return "%s 还要 %d 天" % [data.display_name, maxi(0, data.mature_days - tile.growth)]
+	if not _spend(_cost_of(entry)):
+		return "体力不足"
+	var amount: int = harvest(cell)
+	if amount <= 0:
+		return "什么都没收到"
+	add_money(amount * data.sell_price)
+	return "收获 %s ×%d（+%d G）" % [data.display_name, amount, amount * data.sell_price]
+
+
+func _use_seed(cell: Vector2i, entry: HotbarEntry) -> String:
+	var tile: FarmTile = farm.peek(cell)
+	if tile == null or tile.state == FarmTile.State.UNTILLED:
+		return "要先用锄头翻地"
+	if tile.has_crop():
+		return "这块地种着 %s" % _crop_name(tile.crop_id)
+
+	var seed: CropData = CropDatabase.get_crop(entry.id)
+	if seed == null:
+		return "无效的种子"
+	# 季节白名单要在扣体力之前判 —— 否则"种不下去"还会白扣体力（见上面的纪律）
+	if not seed.grows_in_season(TimeManager.clock.season):
+		return "%s 不能在%s播种" % [seed.display_name, TimeManager.clock.season_name()]
+	if not _spend(STAMINA_PLANT):
+		return "体力不足"
+	if plant(cell, entry.id):
+		return "播种 %s" % seed.display_name
+	return "这里种不下去"
+
+
+## 工具的体力消耗跟着工具数据走（ToolData.stamina_cost）。
+## 【为什么不把 cost 抄进 HotbarEntry】那样改一次数值要改两处。
+##   工具表是唯一事实来源，HotbarEntry 只负责"显示什么"。
+func _cost_of(entry: HotbarEntry) -> int:
+	var tool: ToolData = ToolDatabase.get_tool(entry.id)
+	return tool.stamina_cost if tool != null else 0
+
+
+func _crop_name(crop_id: String) -> String:
+	var data: CropData = CropDatabase.get_crop(crop_id)
+	return data.display_name if data != null else crop_id
 
 
 # ── 资源 ─────────────────────────────────────────────────
@@ -238,20 +313,67 @@ func _on_day_changed(_day: int, _season: int) -> void:
 	EventBus.stamina_changed.emit(stamina, MAX_STAMINA)
 
 
-# ── 种子选择 ─────────────────────────────────────────────
+# ── 手持格位 ─────────────────────────────────────────────
 
-## 选中第 slot 格（0 起）的种子。越界静默忽略 —— 快捷栏有 12 格但作物可能没那么多，
-## 越界不是错误，只是"这格是空的"。
+## 选中第 slot 格（0 起）。越界静默忽略 —— 越界不是错误，只是"按到了不存在的格"。
 func use_slot(slot: int) -> void:
-	var ids: Array[String] = CropDatabase.all_ids()
-	if slot < 0 or slot >= ids.size():
+	if slot < 0 or slot >= hotbar.size():
 		return
-	selected_crop_id = ids[slot]
-	EventBus.crop_selected.emit(selected_crop_id)
+	selected_slot = slot
+	EventBus.slot_selected.emit(selected_slot)
 
 
+func selected_entry() -> HotbarEntry:
+	return hotbar.entry_at(selected_slot)
+
+
+## 手上如果是种子就返回对应的 CropData，是工具则返回 null。
+##
+## 【注意】调用方拿到 null 不等于出错 —— 拿着锄头时本来就没有"选中的种子"。
+##   要判断"手上是工具还是种子"请用 `selected_entry().kind`。
 func selected_crop() -> CropData:
-	return CropDatabase.get_crop(selected_crop_id)
+	var entry: HotbarEntry = selected_entry()
+	if entry == null or not entry.is_seed():
+		return null
+	return CropDatabase.get_crop(entry.id)
+
+
+## 手上如果是工具就返回对应的 ToolData，是种子则返回 null。
+func selected_tool() -> ToolData:
+	var entry: HotbarEntry = selected_entry()
+	if entry == null or not entry.is_tool():
+		return null
+	return ToolDatabase.get_tool(entry.id)
+
+
+## 当前手持的种子 id；拿的不是种子就返回空串。
+func _held_seed_id() -> String:
+	var crop: CropData = selected_crop()
+	return "" if crop == null else crop.id
+
+
+## 手持物的显示名（"锄头" / "芜菁"）。空位返回空串。
+func selected_label() -> String:
+	var entry: HotbarEntry = selected_entry()
+	return "" if entry == null else entry.label
+
+
+## 按 id 切到某件工具。找不到返回 false（不改动当前手持）。
+func select_tool(tool_id: String) -> bool:
+	var index: int = hotbar.index_of_tool(tool_id)
+	if index < 0:
+		return false
+	use_slot(index)
+	return true
+
+
+## 按 id 切到某种作物的种子。找不到返回 false。
+func select_crop(crop_id: String) -> bool:
+	var index: int = hotbar.index_of_crop(crop_id)
+	if index < 0:
+		return false
+	use_slot(index)
+	return true
 
 
 # ── 存档 ─────────────────────────────────────────────────
@@ -261,7 +383,7 @@ func to_dict() -> Dictionary:
 		"farm": farm.to_dict(),
 		"money": money,
 		"stamina": stamina,
-		"selected_crop_id": selected_crop_id,
+		"selected_slot": selected_slot,
 	}
 
 
@@ -269,20 +391,17 @@ func from_dict(data: Dictionary) -> void:
 	farm = FarmGrid.from_dict(VariantUtil.dict_dict(data, "farm"))
 	money = VariantUtil.dict_int(data, "money", INITIAL_MONEY)
 	stamina = VariantUtil.dict_int(data, "stamina", MAX_STAMINA)
-	selected_crop_id = VariantUtil.dict_str(data, "selected_crop_id", "parsnip")
+
+	# 【旧档兼容】M0 存的是 selected_crop_id（当时快捷栏只有种子）。
+	#   这里把老的作物 id 翻译成新布局里的格号，老档读进来手上还是原来那种种子。
+	#   不清掉这个分支的代价是：老玩家的档一读进来手持物就跳回锄头，
+	#   看起来像"读档把我的选择弄丢了"。
+	var slot: int = VariantUtil.dict_int(data, "selected_slot", -1)
+	if slot < 0:
+		var legacy_id: String = VariantUtil.dict_str(data, "selected_crop_id", "")
+		slot = hotbar.index_of_crop(legacy_id) if legacy_id != "" else -1
+	selected_slot = clampi(slot, 0, maxi(0, hotbar.size() - 1))
+
 	EventBus.money_changed.emit(money)
 	EventBus.stamina_changed.emit(stamina, MAX_STAMINA)
-
-
-## 一行摘要，调试与 HUD 都用它。
-func describe(cell: Vector2i) -> String:
-	var tile: FarmTile = farm.peek(cell)
-	if tile == null:
-		return "%s · 未生成" % str(cell)
-	if tile.crop_id == "":
-		return "%s · %s" % [str(cell), "荒草" if tile.state == FarmTile.State.UNTILLED else "已翻土"]
-	var data: CropData = CropDatabase.get_crop(tile.crop_id)
-	if data == null:
-		return "%s · %s（未知作物）" % [str(cell), tile.crop_id]
-	var state_text: String = "已浇水" if tile.state == FarmTile.State.WATERED else "未浇水"
-	return "%s · %s %d/%d 天（%s）" % [str(cell), data.display_name, tile.growth, data.mature_days, state_text]
+	EventBus.slot_selected.emit(selected_slot)

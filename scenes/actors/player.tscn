@@ -53,6 +53,27 @@ height = 0.07
 radial_segments = 8
 rings = 4
 
+; ══════════════════════════════════════════════════════════════════════
+;  骨架结构 —— 这是"走路像人"的前提，改动前请先读懂
+;
+;  为什么每根肢体外面都要套一个空 Node3D 枢轴（Pivot）：
+;    MeshInstance3D 绕**自己的中心**旋转 = 一根在原地打转的火柴棍，
+;    这正是"僵尸步"的来源。人走路时肢体是绕**关节**（髋 / 肩）转的。
+;    所以结构必须是：
+;        LegPivotLeft  ← 位于髋部的空节点，脚本转它
+;          └ Mesh     ← 往下偏移半根腿长，于是"转枢轴 = 整条腿摆出去"
+;
+;  层级分工（脚本里一一对应）：
+;    Visual           整体上下起伏 + 左右侧倾（腿也跟着，所以腿挂在这里）
+;    Visual/Upper     上身前倾（**腿不能挂在它下面**，否则前倾会把腿抬离地面）
+;      ├ LegPivotLeft / LegPivotRight   ← 不在这里，见上
+;      ├ Torso
+;      ├ ArmPivotLeft / ArmPivotRight
+;      └ HeadPivot
+;
+;  单位：米。人物总高约 1.38，与 CollisionShape3D 的胶囊（0~1.4）对齐。
+; ══════════════════════════════════════════════════════════════════════
+
 [node name="Player" type="CharacterBody3D" groups=["player"]]
 script = ExtResource("1_player")
 
@@ -62,47 +83,67 @@ shape = SubResource("CapsuleShape3D_body")
 
 [node name="Visual" type="Node3D" parent="."]
 
-[node name="LegLeft" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.11, 0.2, 0)
+[node name="LegPivotLeft" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.11, 0.42, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Visual/LegPivotLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.21, 0)
 mesh = SubResource("BoxMesh_leg")
 surface_material_override/0 = SubResource("Mat_pants")
 
-[node name="LegRight" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.11, 0.2, 0)
+[node name="LegPivotRight" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.11, 0.42, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Visual/LegPivotRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.21, 0)
 mesh = SubResource("BoxMesh_leg")
 surface_material_override/0 = SubResource("Mat_pants")
 
-[node name="Torso" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.7, 0)
+[node name="Upper" type="Node3D" parent="Visual"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.42, 0)
+
+[node name="Torso" type="MeshInstance3D" parent="Visual/Upper"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.28, 0)
 mesh = SubResource("BoxMesh_torso")
 surface_material_override/0 = SubResource("Mat_shirt")
 
-[node name="ArmLeft" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.28, 0.71, 0)
+[node name="ArmPivotLeft" type="Node3D" parent="Visual/Upper"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.28, 0.52, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Visual/Upper/ArmPivotLeft"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.21, 0)
 mesh = SubResource("BoxMesh_arm")
 surface_material_override/0 = SubResource("Mat_shirt")
 
-[node name="ArmRight" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.28, 0.71, 0)
+[node name="ArmPivotRight" type="Node3D" parent="Visual/Upper"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.28, 0.52, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Visual/Upper/ArmPivotRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.21, 0)
 mesh = SubResource("BoxMesh_arm")
 surface_material_override/0 = SubResource("Mat_shirt")
 
-[node name="Head" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.16, 0)
+[node name="ToolProp" type="Node3D" parent="Visual/Upper/ArmPivotRight"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.4, 0)
+
+[node name="HeadPivot" type="Node3D" parent="Visual/Upper"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.74, 0)
+
+[node name="Head" type="MeshInstance3D" parent="Visual/Upper/HeadPivot"]
 mesh = SubResource("SphereMesh_head")
 surface_material_override/0 = SubResource("Mat_skin")
 
-[node name="Hair" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 0.72, 0, 0, 0, 1, 0, 1.26, 0.015)
+[node name="Hair" type="MeshInstance3D" parent="Visual/Upper/HeadPivot"]
+transform = Transform3D(1, 0, 0, 0, 0.72, 0, 0, 0, 1, 0, 0.1, 0.015)
 mesh = SubResource("SphereMesh_hair")
 surface_material_override/0 = SubResource("Mat_hair")
 
-[node name="EyeLeft" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.075, 1.17, -0.2)
+[node name="EyeLeft" type="MeshInstance3D" parent="Visual/Upper/HeadPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.075, 0.01, -0.2)
 mesh = SubResource("SphereMesh_eye")
 surface_material_override/0 = SubResource("Mat_eye")
 
-[node name="EyeRight" type="MeshInstance3D" parent="Visual"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.075, 1.17, -0.2)
+[node name="EyeRight" type="MeshInstance3D" parent="Visual/Upper/HeadPivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.075, 0.01, -0.2)
 mesh = SubResource("SphereMesh_eye")
 surface_material_override/0 = SubResource("Mat_eye")

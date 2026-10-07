@@ -23,6 +23,9 @@ enum Kind {
 	SNOW,
 	FOG,
 	SEASON,  ## 一片叶子，tint = 季节色
+	HOE,     ## 锄头 —— 对应 ToolDatabase.HOE
+	CAN,     ## 洒水壶 —— 对应 ToolDatabase.CAN
+	SICKLE,  ## 镰刀 —— 对应 ToolDatabase.SICKLE
 }
 
 var kind: int = Kind.CROP:
@@ -77,6 +80,22 @@ static func kind_for_weather(weather: int) -> int:
 	return Kind.SUNNY
 
 
+## 按工具 id 取图标种类。未知工具返回 −1（调用方画个方块兜底）。
+##
+## 【为什么按 id 而不是"按 verb"】锄头和镰刀都是"干活的铁器"，
+##   但玩家一眼要能分出"手上这把是锄头"。图标必须跟着**具体工具**走，
+##   将来加了"强化锄头"也要有自己的图标。
+static func kind_for_tool(tool_id: String) -> int:
+	match tool_id:
+		ToolDatabase.HOE:
+			return Kind.HOE
+		ToolDatabase.CAN:
+			return Kind.CAN
+		ToolDatabase.SICKLE:
+			return Kind.SICKLE
+	return -1
+
+
 # ── 分发 ─────────────────────────────────────────────────
 
 static func draw_shape(
@@ -112,6 +131,12 @@ static func draw_shape(
 			_draw_fog(canvas, center, box, alpha)
 		Kind.SEASON:
 			_draw_leaf(canvas, center, box, color, alpha)
+		Kind.HOE:
+			_draw_hoe(canvas, center, box, alpha)
+		Kind.CAN:
+			_draw_can(canvas, center, box, color, alpha)
+		Kind.SICKLE:
+			_draw_sickle(canvas, center, box, alpha)
 
 
 # ── 各图标 ───────────────────────────────────────────────
@@ -243,6 +268,108 @@ static func _draw_leaf(canvas: CanvasItem, c: Vector2, box: float, tint: Color, 
 		Color(tint.darkened(0.45), alpha),
 		maxf(1.5, box * 0.06),
 	)
+
+
+# ── 工具 ─────────────────────────────────────────────────
+#
+# 【共同画法】三件工具都是"斜着拿"的：左下 → 右上。
+#   统一斜向让它们摆在一排格子里时看起来是一套东西，
+#   也让玩家不用逐格辨认就能靠"轮廓"认出这是工具区还是种子区。
+
+## 锄头：斜木柄 + 顶端横出的一块铁刃。
+static func _draw_hoe(canvas: CanvasItem, c: Vector2, box: float, alpha: float) -> void:
+	var wood: Color = Color(0.58, 0.39, 0.20, alpha)
+	var steel: Color = Color(0.85, 0.87, 0.91, alpha)
+	var steel_dark: Color = Color(0.58, 0.61, 0.67, alpha)
+
+	canvas.draw_line(
+		c + Vector2(-box * 0.28, box * 0.44),
+		c + Vector2(box * 0.18, -box * 0.26),
+		wood,
+		maxf(2.0, box * 0.12),
+	)
+
+	var blade: PackedVector2Array = PackedVector2Array([
+		c + Vector2(box * 0.06, -box * 0.46),
+		c + Vector2(box * 0.48, -box * 0.26),
+		c + Vector2(box * 0.40, -box * 0.02),
+		c + Vector2(box * 0.02, -box * 0.24),
+	])
+	canvas.draw_colored_polygon(blade, steel)
+	# 描一圈边：小尺寸下浅色铁器压在浅色羊皮纸上会糊掉
+	canvas.draw_polyline(
+		PackedVector2Array([blade[0], blade[1], blade[2], blade[3], blade[0]]),
+		steel_dark,
+		maxf(1.0, box * 0.045),
+	)
+
+
+## 洒水壶：壶身 + 斜出的壶嘴 + 提手 + 两滴水。
+static func _draw_can(canvas: CanvasItem, c: Vector2, box: float, tint: Color, alpha: float) -> void:
+	var body: Color = Color(tint, alpha)
+	var dark: Color = Color(tint.darkened(0.45), alpha)
+	var water: Color = Color(0.40, 0.68, 0.94, alpha)
+
+	var rect: Rect2 = Rect2(
+		c + Vector2(-box * 0.32, -box * 0.12),
+		Vector2(box * 0.46, box * 0.52),
+	)
+	canvas.draw_rect(rect, dark)
+	canvas.draw_rect(rect.grow(-maxf(1.0, box * 0.06)), body)
+
+	# 壶嘴：从壶身右上斜出去
+	canvas.draw_line(
+		c + Vector2(box * 0.08, box * 0.08),
+		c + Vector2(box * 0.42, -box * 0.26),
+		dark,
+		maxf(2.0, box * 0.13),
+	)
+	# 提手：壶顶一道半圆
+	canvas.draw_arc(
+		c + Vector2(-box * 0.09, -box * 0.12),
+		box * 0.21,
+		PI,
+		TAU,
+		12,
+		dark,
+		maxf(2.0, box * 0.09),
+	)
+
+	canvas.draw_circle(c + Vector2(box * 0.44, -box * 0.02), box * 0.075, water)
+	canvas.draw_circle(c + Vector2(box * 0.34, box * 0.12), box * 0.055, water)
+
+
+## 镰刀：短木柄 + 一道弯月刀刃（用内外两条弧拼成实心月牙）。
+static func _draw_sickle(canvas: CanvasItem, c: Vector2, box: float, alpha: float) -> void:
+	var wood: Color = Color(0.58, 0.39, 0.20, alpha)
+	var steel: Color = Color(0.86, 0.88, 0.93, alpha)
+	var steel_dark: Color = Color(0.55, 0.58, 0.64, alpha)
+
+	canvas.draw_line(
+		c + Vector2(box * 0.30, box * 0.46),
+		c + Vector2(box * 0.06, box * 0.04),
+		wood,
+		maxf(2.0, box * 0.12),
+	)
+
+	# 弧心放在刀月牙的"凹侧"，外弧半径大、内弧半径小
+	var arc_center: Vector2 = c + Vector2(box * 0.02, -box * 0.06)
+	var from_angle: float = -PI * 0.92
+	var to_angle: float = -PI * 0.06
+	var steps: int = 14
+
+	var blade: PackedVector2Array = PackedVector2Array()
+	# 外弧：从刀根走到刀尖
+	for i: int in steps + 1:
+		var angle: float = lerpf(from_angle, to_angle, float(i) / float(steps))
+		blade.append(arc_center + Vector2(cos(angle), sin(angle)) * box * 0.47)
+	# 内弧：从刀尖折回来，但**不回到底** —— 留一段宽的刀根，形状才像镰刀而不是半月
+	for i: int in range(steps, 2, -1):
+		var angle: float = lerpf(from_angle, to_angle, float(i) / float(steps))
+		blade.append(arc_center + Vector2(cos(angle), sin(angle)) * box * 0.32)
+
+	canvas.draw_colored_polygon(blade, steel)
+	canvas.draw_arc(arc_center, box * 0.475, from_angle, to_angle, 18, steel_dark, maxf(1.0, box * 0.045))
 
 
 ## 画一个旋转过的椭圆：借助 draw_set_transform 把圆"压扁"再旋转。

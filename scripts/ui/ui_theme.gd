@@ -35,6 +35,10 @@ const COIN_DEEP: Color = Color(0.78, 0.55, 0.09, 1.0)
 
 const SLOT_FILL: Color = Color(0.84, 0.71, 0.51, 0.97)
 const SLOT_FILL_DARK: Color = Color(0.62, 0.48, 0.31, 0.95)
+## 工具格用偏冷的灰调 —— 和暖色的种子格拉开距离，
+## 玩家扫一眼工具栏就知道"左边三格是家伙什，右边是种子"。
+const SLOT_TOOL_FILL: Color = Color(0.76, 0.75, 0.72, 0.97)
+const SLOT_TOOL_BORDER: Color = Color(0.38, 0.34, 0.31, 1.0)
 const SLOT_SELECTED: Color = Color(1.0, 0.94, 0.46, 1.0)
 
 const ENERGY_HIGH: Color = Color(0.36, 0.82, 0.28, 1.0)
@@ -60,6 +64,7 @@ static var _panel_style: StyleBoxTexture = null
 static var _slot_style: StyleBoxFlat = null
 static var _slot_selected_style: StyleBoxFlat = null
 static var _slot_empty_style: StyleBoxFlat = null
+static var _slot_tool_style: StyleBoxFlat = null
 
 
 # ── 面板 ─────────────────────────────────────────────────
@@ -140,6 +145,13 @@ static func slot_empty_style() -> StyleBoxFlat:
 	return _slot_empty_style
 
 
+## 工具格：冷调灰底 + 深色边，跟暖色的种子格一眼分得开。
+static func slot_tool_style() -> StyleBoxFlat:
+	if _slot_tool_style == null:
+		_slot_tool_style = _build_slot(SLOT_TOOL_FILL, SLOT_TOOL_BORDER, 2)
+	return _slot_tool_style
+
+
 ## 选中格：加粗的亮黄边 —— 一眼能看出"现在拿的是哪个"。
 static func slot_selected_style() -> StyleBoxFlat:
 	if _slot_selected_style == null:
@@ -175,6 +187,25 @@ static func make_label(text: String, size: int, color: Color, outline: int = 4) 
 	label.text = text
 	style_label(label, size, color, outline)
 	return label
+
+
+## 给 Button 套上木质面板样式。
+##
+## 【为什么五个状态共用同一个 StyleBox】九宫格样式是**程序化生成的贴图**，
+##   为 hover / pressed 各生成一张要写三份贴图代码，收益只是"按下去暗一点"。
+##   改成只换文字颜色，效果够用，代码量少一个量级。
+static func style_button(button: Button, font_size: int = FONT_BODY) -> void:
+	var style: StyleBoxTexture = panel_style()
+	button.add_theme_stylebox_override("normal", style)
+	button.add_theme_stylebox_override("hover", style)
+	button.add_theme_stylebox_override("pressed", style)
+	button.add_theme_stylebox_override("focus", style)
+	button.add_theme_stylebox_override("disabled", style)
+	button.add_theme_font_size_override("font_size", font_size)
+	button.add_theme_color_override("font_color", TEXT_DARK)
+	button.add_theme_color_override("font_hover_color", GOLD_DEEP)
+	button.add_theme_color_override("font_pressed_color", WOOD_DARK)
+	button.add_theme_color_override("font_focus_color", TEXT_DARK)
 
 
 ## 按当前体力比例取颜色：绿 → 黄 → 红。

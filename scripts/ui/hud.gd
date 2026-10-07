@@ -26,6 +26,8 @@ const MARGIN: float = 26.0
 const MAX_TOASTS: int = 3
 ## 帮助面板宽度
 const HELP_WIDTH: float = 430.0
+## 右上角留给常驻「菜单」按钮的高度 —— 状态面板要往下让开这一条
+const MENU_BAND: float = 56.0
 
 var _root: Control = null
 var _ui_scale: float = 1.0
@@ -111,8 +113,9 @@ func _build_status() -> void:
 	_status.anchor_bottom = 0.0
 	_status.offset_left = -MARGIN - 200.0
 	_status.offset_right = -MARGIN
-	_status.offset_top = MARGIN
-	_status.offset_bottom = MARGIN + 320.0
+	# 顶部留出 MENU_BAND —— 右上角那一格被常驻的「菜单」按钮占了（见 PauseMenu）
+	_status.offset_top = MARGIN + MENU_BAND
+	_status.offset_bottom = MARGIN + MENU_BAND + 320.0
 	_root.add_child(_status)
 
 
@@ -208,12 +211,14 @@ func _build_help() -> void:
 	var rows: Array[PackedStringArray] = [
 		PackedStringArray(["WASD / 方向键", "移动"]),
 		PackedStringArray(["Shift", "奔跑"]),
-		PackedStringArray(["鼠标左键", "翻地 / 播种 / 浇水 / 收获"]),
+		PackedStringArray(["鼠标左键", "使用手持物"]),
+		PackedStringArray(["1 / 2 / 3", "锄头 / 洒水壶 / 镰刀"]),
+		PackedStringArray(["4~9 · 0 · - · =", "选择种子"]),
 		PackedStringArray(["Q / E", "旋转视角"]),
 		PackedStringArray(["滚轮", "缩放"]),
-		PackedStringArray(["1 ~ 9", "选择种子"]),
 		PackedStringArray(["F10", "睡觉，进入次日"]),
 		PackedStringArray(["F5 / F9", "存档 / 读档"]),
+		PackedStringArray(["ESC", "菜单 / 退出游戏"]),
 		PackedStringArray(["F1", "显示 / 隐藏本面板"]),
 	]
 	for row: PackedStringArray in rows:
@@ -258,27 +263,45 @@ func _update_tooltip() -> void:
 
 ## 格位信息的玩家向文案。
 ##
-## 【为什么不直接用 GameManager.describe()】那个是给调试看的，
-##   带格位坐标、用词也偏技术。玩家界面上应该直接说"能做什么"。
+## 【为什么不放在 GameManager 里】那是"调试视角"的描述（带坐标、用词偏技术），
+##   而且描述要跟着"手上拿着什么"变 —— 手持物是 UI 才关心的概念。
+##   放在表现层，规则判断仍然全部留在 L2/L3，这里只是"挑词"。
+##
+## 【为什么要把手持物算进来】M0.5 起"能做什么"取决于"手上拿什么"。
+##   只说"荒草地 —— 可以开垦"的话，拿着水壶点上去毫无反应，
+##   玩家会以为游戏坏了。提示必须跟着手持物走。
 func _describe_cell(cell: Vector2i) -> String:
 	var tile: FarmTile = GameManager.farm.peek(cell)
+	var hand: HotbarEntry = GameManager.selected_entry()
+
 	if tile == null or tile.state == FarmTile.State.UNTILLED:
-		return "荒草地 —— 可以开垦"
+		return "荒草地 · %s" % _hand_hint(hand, ToolData.Verb.TILL, "拿锄头翻地")
+
 	if not tile.has_crop():
-		return "已翻好的土 —— 可以播种%s" % _selected_crop_name()
+		return "已翻好的土 · 拿种子播种 / 拿水壶浇水"
 
 	var data: CropData = CropDatabase.get_crop(tile.crop_id)
 	if data == null:
 		return "未知作物"
 	if data.is_mature(tile.growth):
-		return "%s —— 可以收获了！" % data.display_name
-	var watered: String = "已浇水" if tile.state == FarmTile.State.WATERED else "还没浇水"
-	return "%s · 生长 %d/%d 天 · %s" % [data.display_name, tile.growth, data.mature_days, watered]
+		return "%s 已成熟 · %s" % [
+			data.display_name, _hand_hint(hand, ToolData.Verb.HARVEST, "拿镰刀收割"),
+		]
+	if tile.state == FarmTile.State.WATERED:
+		return "%s · 生长 %d/%d 天 · 已浇水" % [data.display_name, tile.growth, data.mature_days]
+	return "%s · 生长 %d/%d 天 · %s" % [
+		data.display_name,
+		tile.growth,
+		data.mature_days,
+		_hand_hint(hand, ToolData.Verb.WATER, "拿水壶浇水"),
+	]
 
 
-func _selected_crop_name() -> String:
-	var crop: CropData = GameManager.selected_crop()
-	return "" if crop == null else "（%s）" % crop.display_name
+## 手持物正好是干这事的那件工具 → 说"可以动手"；否则直接提示该换什么。
+func _hand_hint(hand: HotbarEntry, verb: int, fallback: String) -> String:
+	if hand != null and hand.is_tool() and hand.verb == verb:
+		return "可以动手"
+	return fallback
 
 
 func _update_help_state() -> void:
@@ -287,8 +310,12 @@ func _update_help_state() -> void:
 	var cell_text: String = "—"
 	if _farm_view != null and _farm_view.hovered_cell() != FarmView.NO_CELL:
 		cell_text = _describe_cell(_farm_view.hovered_cell())
-	_help_state.text = "体力 %d / %d      指向：%s" % [
-		GameManager.stamina, GameManager.MAX_STAMINA, cell_text,
+	var hand: HotbarEntry = GameManager.selected_entry()
+	_help_state.text = "体力 %d / %d      手持：%s      指向：%s" % [
+		GameManager.stamina,
+		GameManager.MAX_STAMINA,
+		"空手" if hand == null or hand.is_empty() else hand.label,
+		cell_text,
 	]
 
 
