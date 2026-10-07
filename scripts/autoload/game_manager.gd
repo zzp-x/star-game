@@ -51,7 +51,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	var slot: int = int(key.physical_keycode) - int(KEY_1)
-	if slot >= 0 and slot < 5:
+	# 快捷栏有 12 格，但 M0 只有 9 种作物，所以 1~9 有效
+	if slot >= 0 and slot < CropDatabase.all_ids().size():
 		_select_crop_slot(slot)
 		get_viewport().set_input_as_handled()
 	elif key.physical_keycode == KEY_F10:
@@ -124,34 +125,54 @@ func harvest(cell: Vector2i) -> int:
 
 ## 只用鼠标左键一个键的「智能操作」，M0 手感验证用。
 ## 优先级：可收获 → 可播种 → 未翻地则翻地 → 已翻地未浇水则浇水
+##
+## 【纪律】先校验、再扣体力、最后执行 —— 顺序不能反。
+##   原来的写法是「先 _spend 再 plant」，而 plant 会因季节白名单失败，
+##   结果就是「种不下去，但体力已经扣了，提示还写着体力不足」。
 func use_tool(cell: Vector2i) -> String:
 	var tile: FarmTile = farm.peek(cell)
 
+	# ① 成熟作物：收获
 	if tile != null and tile.has_crop():
-		var data: CropData = CropDatabase.get_crop(tile.crop_id)
-		if data != null and data.is_mature(tile.growth):
-			if _spend(STAMINA_HARVEST):
-				var amount: int = harvest(cell)
-				if amount > 0:
-					add_money(amount * data.sell_price)
-					return "收获 %s ×%d（+%d G）" % [data.display_name, amount, amount * data.sell_price]
-			return "体力不足"
+		var crop: CropData = CropDatabase.get_crop(tile.crop_id)
+		if crop != null and crop.is_mature(tile.growth):
+			if not _spend(STAMINA_HARVEST):
+				return "体力不足"
+			var amount: int = harvest(cell)
+			if amount > 0:
+				add_money(amount * crop.sell_price)
+				return "收获 %s ×%d（+%d G）" % [crop.display_name, amount, amount * crop.sell_price]
+			return "什么都没收到"
 
+	# ② 未翻地：翻地
 	if tile == null or tile.state == FarmTile.State.UNTILLED:
-		if _spend(STAMINA_TILL) and till(cell):
+		if not _spend(STAMINA_TILL):
+			return "体力不足"
+		if till(cell):
 			return "翻地"
-		return "体力不足"
+		return "这里翻不了"
 
+	# ③ 已翻地但空着：播种
 	if tile.crop_id == "":
-		if _spend(STAMINA_PLANT) and plant(cell):
-			var planted: CropData = CropDatabase.get_crop(tile.crop_id)
-			return "播种 %s" % (planted.display_name if planted != null else tile.crop_id)
-		return "体力不足"
+		var seed: CropData = selected_crop()
+		if seed == null:
+			return "没有选中的种子"
+		# 季节白名单要在扣体力之前判 —— 否则"种不下去"还会白扣体力（见上面的纪律）
+		if not seed.grows_in_season(TimeManager.clock.season):
+			return "%s 不能在%s播种" % [seed.display_name, TimeManager.clock.season_name()]
+		if not _spend(STAMINA_PLANT):
+			return "体力不足"
+		if plant(cell):
+			return "播种 %s" % seed.display_name
+		return "这里种不下去"
 
+	# ④ 已播种但没浇水：浇水
 	if tile.state == FarmTile.State.TILLED:
-		if _spend(STAMINA_WATER) and water(cell):
+		if not _spend(STAMINA_WATER):
+			return "体力不足"
+		if water(cell):
 			return "浇水"
-		return "体力不足"
+		return "这里不用浇水"
 
 	return "无事可做"
 
@@ -197,6 +218,7 @@ func _select_crop_slot(slot: int) -> void:
 	if slot < 0 or slot >= ids.size():
 		return
 	selected_crop_id = ids[slot]
+	EventBus.crop_selected.emit(selected_crop_id)
 
 
 func selected_crop() -> CropData:

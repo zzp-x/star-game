@@ -27,6 +27,8 @@ const CROP_MESH_HEIGHT: float = 1.0
 @onready var soil_root: Node3D = $Soil
 @onready var crops_root: Node3D = $Crops
 @onready var highlight: MeshInstance3D = $Highlight
+@onready var ground: MeshInstance3D = $Ground
+@onready var field_patch: MeshInstance3D = $FieldPatch
 
 var _hover_cell: Vector2i = NO_CELL
 ## Vector2i → MeshInstance3D（土壤）。用类型化字典，取出即 MeshInstance3D 而非 Variant。
@@ -40,12 +42,14 @@ var _crop_material: StandardMaterial3D
 var _highlight_material: StandardMaterial3D
 var _crop_mesh: CylinderMesh
 var _soil_mesh: BoxMesh
-var _crop_ripe: StandardMaterial3D = null
+## 作物材质缓存，键是 "<crop_id>" 或 "<crop_id>|ripe"
+var _crop_materials: Dictionary[String, StandardMaterial3D] = {}
 
 
 func _ready() -> void:
 	add_to_group("farm_view")
 	_build_materials()
+	_apply_ground_materials()
 	EventBus.tile_changed.connect(_on_tile_changed)
 	highlight.visible = false
 	refresh_all()
@@ -55,7 +59,7 @@ func _ready() -> void:
 		Engine.get_version_info().get("string", "unknown"),
 		FIELD_SIZE.x,
 		FIELD_SIZE.y,
-		"左键操作 / Q·E 转视角 / 滚轮缩放 / 1-5 换种子 / F10 过夜 / F5 存档 / F9 读档",
+		"左键操作 / Q·E 转视角 / 滚轮缩放 / 1-9 换种子 / F10 过夜 / F5 存档 / F9 读档",
 	])
 
 
@@ -177,10 +181,8 @@ func _update_crop(cell: Vector2i, tile: FarmTile) -> void:
 
 	var mesh_node: MeshInstance3D = pivot.get_child(0) as MeshInstance3D
 	if mesh_node != null:
-		if data != null and data.is_mature(tile.growth):
-			mesh_node.material_override = _crop_ripe_material()
-		else:
-			mesh_node.material_override = _crop_material
+		var ripe: bool = data != null and data.is_mature(tile.growth)
+		mesh_node.material_override = _crop_material_for(tile.crop_id, ripe)
 
 
 func _ensure_soil(cell: Vector2i) -> MeshInstance3D:
@@ -261,12 +263,49 @@ func _build_materials() -> void:
 	_crop_mesh.radial_segments = 8
 
 
-## 成熟作物用一个"昂贵"的暖色，一眼能认出来。
-func _crop_ripe_material() -> StandardMaterial3D:
-	if _crop_ripe == null:
-		_crop_ripe = StandardMaterial3D.new()
-		_crop_ripe.albedo_color = Color(0.95, 0.78, 0.24)
-		_crop_ripe.roughness = 0.6
-		_crop_ripe.emission_enabled = true
-		_crop_ripe.emission = Color(0.35, 0.26, 0.05)
-	return _crop_ripe
+## 成熟作物用品种本色 + 微弱自发光，一眼能认出来。
+##
+## 【为什么不用同一个绿色】九种作物全长一个样，站远了分不出田里种的是什么。
+##   品种颜色存在 CropData.icon_color（L1 数据层），UI 图标也复用同一个颜色。
+func _crop_material_for(crop_id: String, ripe: bool) -> StandardMaterial3D:
+	var key: String = crop_id + ("|ripe" if ripe else "")
+	if _crop_materials.has(key):
+		return _crop_materials[key]
+
+	var data: CropData = CropDatabase.get_crop(crop_id)
+	var base: Color = data.icon_color if data != null else Color(0.36, 0.66, 0.28)
+
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	if ripe:
+		mat.albedo_color = base
+		mat.roughness = 0.55
+		mat.emission_enabled = true
+		mat.emission = base * 0.32
+	else:
+		# 生长中往植物绿靠一截 —— "还没熟"要能一眼看出来
+		mat.albedo_color = base.lerp(Color(0.34, 0.62, 0.27), 0.55)
+		mat.roughness = 0.85
+
+	_crop_materials[key] = mat
+	return mat
+
+
+# ── 地面与农田范围 ───────────────────────────────────────
+
+## 给地面和农田范围贴上程序化生成的贴图（零素材，见 ProcTextures）。
+##
+## 【为什么农田那一层是"透明网格"而不是"一整块土色"】
+##   没开垦的地就该长得跟草地一样，网格只是告诉玩家「这一块能种」。
+##   铺一整块土色会让人误以为地已经翻好了。
+func _apply_ground_materials() -> void:
+	var grass: StandardMaterial3D = StandardMaterial3D.new()
+	grass.albedo_texture = ProcTextures.grass_tile()
+	grass.uv1_scale = Vector3(50.0, 50.0, 1.0)
+	grass.roughness = 0.95
+	ground.material_override = grass
+
+	var field: StandardMaterial3D = StandardMaterial3D.new()
+	field.albedo_texture = ProcTextures.field_grid(FIELD_SIZE.x, 48)
+	field.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	field.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	field_patch.material_override = field

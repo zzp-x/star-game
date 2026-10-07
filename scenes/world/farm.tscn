@@ -1,17 +1,19 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/world/farm_view.gd" id="1_farmview"]
 [ext_resource type="Script" path="res://scripts/world/camera_rig.gd" id="2_camrig"]
 [ext_resource type="Script" path="res://scripts/world/sun_controller.gd" id="3_sun"]
 [ext_resource type="Script" path="res://scripts/ui/hud.gd" id="4_hud"]
 [ext_resource type="PackedScene" path="res://scenes/actors/player.tscn" id="5_player"]
+[ext_resource type="Script" path="res://scripts/world/scenery.gd" id="6_scenery"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
-sky_top_color = Color(0.28, 0.46, 0.78, 1)
-sky_horizon_color = Color(0.68, 0.76, 0.82, 1)
-sky_curve = 0.15
-ground_bottom_color = Color(0.18, 0.22, 0.18, 1)
-ground_horizon_color = Color(0.6, 0.64, 0.58, 1)
+sky_top_color = Color(0.25, 0.48, 0.82, 1)
+sky_horizon_color = Color(0.77, 0.85, 0.9, 1)
+sky_curve = 0.12
+sky_energy_multiplier = 1.1
+ground_bottom_color = Color(0.22, 0.3, 0.21, 1)
+ground_horizon_color = Color(0.66, 0.71, 0.63, 1)
 
 [sub_resource type="Sky" id="Sky_main"]
 sky_material = SubResource("ProceduralSkyMaterial_sky")
@@ -20,16 +22,31 @@ sky_material = SubResource("ProceduralSkyMaterial_sky")
 background_mode = 2
 sky = SubResource("Sky_main")
 ambient_light_source = 3
-ambient_light_color = Color(0.62, 0.66, 0.72, 1)
-ambient_light_energy = 0.75
+ambient_light_color = Color(0.68, 0.73, 0.78, 1)
+ambient_light_energy = 0.85
 tonemap_mode = 2
-tonemap_white = 6.0
+tonemap_white = 4.0
 ssao_enabled = true
-ssao_radius = 1.5
-ssao_intensity = 1.4
+ssao_radius = 1.4
+ssao_intensity = 1.5
+fog_enabled = true
+fog_mode = 1
+fog_light_color = Color(0.75, 0.82, 0.86, 1)
+fog_depth_begin = 42.0
+fog_depth_end = 130.0
+adjustment_enabled = true
+adjustment_brightness = 1.04
+adjustment_contrast = 1.06
+adjustment_saturation = 1.18
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
-size = Vector2(90, 90)
+size = Vector2(200, 200)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_field"]
+size = Vector2(16, 16)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ground"]
+size = Vector3(200, 2, 200)
 
 [sub_resource type="BoxMesh" id="BoxMesh_highlight"]
 size = Vector3(0.96, 0.03, 0.96)
@@ -48,6 +65,19 @@ script = ExtResource("3_sun")
 [node name="Ground" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh_ground")
 
+[node name="FieldPatch" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+mesh = SubResource("PlaneMesh_field")
+
+[node name="GroundCollision" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="GroundCollision"]
+shape = SubResource("BoxShape3D_ground")
+
+[node name="Scenery" type="Node3D" parent="."]
+script = ExtResource("6_scenery")
+
 [node name="Soil" type="Node3D" parent="."]
 
 [node name="Crops" type="Node3D" parent="."]
@@ -64,6 +94,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15, 22)
 fov = 40.0
 current = true
 script = ExtResource("2_camrig")
+zoom_distance = 15.0
+min_zoom_distance = 9.0
+max_zoom_distance = 26.0
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("4_hud")

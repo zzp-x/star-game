@@ -1,120 +1,360 @@
 class_name Hud
 extends CanvasLayer
-## M0 调试用 HUD —— 全部 UI 在代码里构建，不依赖任何 .tscn 子节点或美术资源。
+## 星露谷风格的游戏 HUD —— 全部 UI 在代码里构建，不依赖任何美术资源。
 ##
-## 【层级】L4 表现层
-## 【为什么 M0 不做得更漂亮】UI 皮肤属于 M2。现在只需要一眼看清
-##   「时间 / 天气 / 体力 / 钱 / 鼠标指向的格子」，用来验证玩法循环是否跑通。
+## 【层级】L4 表现层 —— 只读游戏状态，不改。
+##
+## 【布局】完全照星露谷的方位：
+##   右上角  日期（季节+日+年）→ 时间 + 天气 → 金钱
+##   右下角  竖直体力条
+##   底部中央 12 格快捷栏（当前选中的种子会高亮）
+##   左下角  消息条（"翻地""播种 芜菁"…）
+##   左上角  按键帮助（F1 切换）
+##   鼠标旁  指向格子的信息气泡
+##
+## 【为什么要自己做缩放】项目把 Stretch Mode 设成了 disabled
+##   （3D 必须按原生分辨率渲染，见 DESIGN.md §5.1），
+##   所以 UI 不会自动跟着窗口缩放。这里用一个「设计画布」Control
+##   统一缩放：所有布局都按 1920×1080 写死像素，缩放由根节点一次搞定。
+##
+## 【鼠标穿透 · 关键】所有 HUD 控件都必须设成 MOUSE_FILTER_IGNORE，
+##   否则点在快捷栏上的鼠标左键会被 GUI 吃掉，
+##   FarmView 的 _unhandled_input 收不到 → 站在快捷栏前面就没法操作田地。
 
-const MARGIN: float = 18.0
-const TOAST_SECONDS: float = 2.0
+const DESIGN_HEIGHT: float = 1080.0
+const MARGIN: float = 26.0
+const MAX_TOASTS: int = 3
+## 帮助面板宽度
+const HELP_WIDTH: float = 430.0
 
-var _info_label: Label
-var _hint_label: Label
-var _toast_label: Label
+var _root: Control = null
+var _ui_scale: float = 1.0
 
-var _toast_timer: float = 0.0
+var _status: HudStatus = null
+var _hotbar: HudHotbar = null
+var _energy: HudEnergy = null
+
+var _tooltip: PanelContainer = null
+var _tooltip_label: Label = null
+
+var _toast_box: VBoxContainer = null
+var _toasts: Array[HudToast] = []
+
+var _banner: Label = null
+var _banner_tween: Tween = null
+
+var _help_panel: PanelContainer = null
+var _help_state: Label = null
+
 var _farm_view: FarmView = null
 
 
 func _ready() -> void:
 	layer = 10
-	_build_ui()
+
+	# 设计画布：所有子控件都按 1920×1080 的坐标写，缩放只在这一层做
+	_root = Control.new()
+	_root.name = "UiRoot"
+	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_root)
+	_update_scale()
+
+	_build_status()
+	_build_hotbar()
+	_build_energy()
+	_build_tooltip()
+	_build_toasts()
+	_build_banner()
+	_build_help()
+
+	_make_click_through(self)
+	_root.queue_redraw()
 
 	EventBus.toast.connect(_on_toast)
 	EventBus.day_changed.connect(_on_day_changed)
 
-
-func _process(delta: float) -> void:
-	_refresh_info()
-
-	if _toast_timer > 0.0:
-		_toast_timer -= delta
-		if _toast_timer <= 0.0:
-			_toast_label.text = ""
+	_show_banner("第 %d 年 · %s %d 日 · %s" % [
+		TimeManager.clock.year,
+		TimeManager.clock.season_name(),
+		TimeManager.clock.day,
+		TimeManager.weather_name(),
+	])
 
 
-# ── 构建 UI ──────────────────────────────────────────────
-
-func _build_ui() -> void:
-	_info_label = _make_label(Vector2(MARGIN, MARGIN), 18, Color(1, 1, 1, 0.94))
-	_info_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
-	_info_label.add_theme_constant_override("shadow_offset_x", 1)
-	_info_label.add_theme_constant_override("shadow_offset_y", 1)
-
-	_hint_label = _make_label(Vector2(MARGIN, MARGIN + 108.0), 14, Color(1, 1, 1, 0.72))
-	_hint_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
-	_hint_label.add_theme_constant_override("shadow_offset_x", 1)
-	_hint_label.add_theme_constant_override("shadow_offset_y", 1)
-
-	# 底部居中提示条
-	_toast_label = Label.new()
-	_toast_label.anchor_left = 0.5
-	_toast_label.anchor_right = 0.5
-	_toast_label.anchor_top = 1.0
-	_toast_label.anchor_bottom = 1.0
-	_toast_label.offset_left = -260.0
-	_toast_label.offset_right = 260.0
-	_toast_label.offset_top = -70.0
-	_toast_label.offset_bottom = -34.0
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_toast_label.add_theme_font_size_override("font_size", 22)
-	_toast_label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.8))
-	_toast_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	_toast_label.add_theme_constant_override("shadow_offset_x", 2)
-	_toast_label.add_theme_constant_override("shadow_offset_y", 2)
-	add_child(_toast_label)
+func _process(_delta: float) -> void:
+	_update_scale()
+	_update_tooltip()
+	_prune_toasts()
+	_update_help_state()
 
 
-func _make_label(pos: Vector2, font_size: int, color: Color) -> Label:
-	var label: Label = Label.new()
-	label.position = pos
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_color_override("font_color", color)
-	add_child(label)
-	return label
+# ── 缩放 ─────────────────────────────────────────────────
+
+func _update_scale() -> void:
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	if viewport_size.y <= 1.0:
+		return
+	# 钳制上下限：极小窗口下文字不至于糊成一团，4K 下也不至于占满半屏
+	_ui_scale = clampf(viewport_size.y / DESIGN_HEIGHT, 0.62, 2.2)
+	_root.scale = Vector2(_ui_scale, _ui_scale)
+	_root.size = viewport_size / _ui_scale
+
+
+# ── 各区域 ───────────────────────────────────────────────
+
+func _build_status() -> void:
+	_status = HudStatus.new()
+	_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_status.anchor_left = 1.0
+	_status.anchor_right = 1.0
+	_status.anchor_top = 0.0
+	_status.anchor_bottom = 0.0
+	_status.offset_left = -MARGIN - 200.0
+	_status.offset_right = -MARGIN
+	_status.offset_top = MARGIN
+	_status.offset_bottom = MARGIN + 320.0
+	_root.add_child(_status)
+
+
+func _build_hotbar() -> void:
+	_hotbar = HudHotbar.new()
+	_hotbar.anchor_left = 0.5
+	_hotbar.anchor_right = 0.5
+	_hotbar.anchor_top = 1.0
+	_hotbar.anchor_bottom = 1.0
+	_hotbar.offset_bottom = -MARGIN
+	_root.add_child(_hotbar)
+
+	# custom_minimum_size 是在 hotbar 的 _ready 里算出来的，
+	# add_child 之后就能读到 —— 据此把它水平居中
+	var half_width: float = _hotbar.custom_minimum_size.x * 0.5
+	_hotbar.offset_left = -half_width
+	_hotbar.offset_right = half_width
+	_hotbar.offset_top = -_hotbar.custom_minimum_size.y - MARGIN
+
+
+func _build_energy() -> void:
+	_energy = HudEnergy.new()
+	_energy.anchor_left = 1.0
+	_energy.anchor_right = 1.0
+	_energy.anchor_top = 1.0
+	_energy.anchor_bottom = 1.0
+	_energy.offset_right = -MARGIN
+	_energy.offset_left = -MARGIN - HudEnergy.BAR_WIDTH
+	_energy.offset_bottom = -MARGIN - 14.0
+	_energy.offset_top = _energy.offset_bottom - HudEnergy.BAR_HEIGHT
+	_root.add_child(_energy)
+
+
+func _build_tooltip() -> void:
+	_tooltip = UiTheme.make_panel()
+	_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tooltip.visible = false
+	_tooltip_label = UiTheme.make_label("", UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 3)
+	_tooltip.add_child(_tooltip_label)
+	_root.add_child(_tooltip)
+
+
+func _build_toasts() -> void:
+	_toast_box = VBoxContainer.new()
+	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast_box.alignment = BoxContainer.ALIGNMENT_END
+	_toast_box.add_theme_constant_override("separation", 6)
+	_toast_box.anchor_top = 1.0
+	_toast_box.anchor_bottom = 1.0
+	_toast_box.offset_left = MARGIN
+	_toast_box.offset_right = MARGIN + 560.0
+	_toast_box.offset_top = -(MARGIN + 320.0)
+	_toast_box.offset_bottom = -MARGIN
+	_root.add_child(_toast_box)
+
+
+func _build_banner() -> void:
+	_banner = UiTheme.make_label("", 44, UiTheme.TEXT_LIGHT, 8)
+	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_banner.anchor_left = 0.5
+	_banner.anchor_right = 0.5
+	_banner.anchor_top = 0.5
+	_banner.anchor_bottom = 0.5
+	_banner.offset_left = -460.0
+	_banner.offset_right = 460.0
+	_banner.offset_top = -60.0
+	_banner.offset_bottom = 60.0
+	_banner.pivot_offset = Vector2(460.0, 60.0)
+	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_root.add_child(_banner)
+
+
+func _build_help() -> void:
+	_help_panel = UiTheme.make_panel()
+	_help_panel.anchor_left = 0.0
+	_help_panel.anchor_top = 0.0
+	_help_panel.offset_left = MARGIN
+	_help_panel.offset_top = MARGIN
+	_help_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var column: VBoxContainer = VBoxContainer.new()
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_theme_constant_override("separation", 6)
+	column.add_child(UiTheme.make_label("操作", UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 3))
+
+	var grid: GridContainer = GridContainer.new()
+	grid.columns = 2
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.add_theme_constant_override("h_separation", 18)
+	grid.add_theme_constant_override("v_separation", 4)
+	var rows: Array[PackedStringArray] = [
+		PackedStringArray(["WASD / 方向键", "移动"]),
+		PackedStringArray(["Shift", "奔跑"]),
+		PackedStringArray(["鼠标左键", "翻地 / 播种 / 浇水 / 收获"]),
+		PackedStringArray(["Q / E", "旋转视角"]),
+		PackedStringArray(["滚轮", "缩放"]),
+		PackedStringArray(["1 ~ 9", "选择种子"]),
+		PackedStringArray(["F10", "睡觉，进入次日"]),
+		PackedStringArray(["F5 / F9", "存档 / 读档"]),
+		PackedStringArray(["F1", "显示 / 隐藏本面板"]),
+	]
+	for row: PackedStringArray in rows:
+		grid.add_child(UiTheme.make_label(row[0], UiTheme.FONT_SMALL, UiTheme.TEXT_DARK, 3))
+		grid.add_child(UiTheme.make_label(row[1], UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3))
+	column.add_child(grid)
+
+	_help_state = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3)
+	column.add_child(_help_state)
+
+	_help_panel.add_child(column)
+	_root.add_child(_help_panel)
 
 
 # ── 刷新 ─────────────────────────────────────────────────
 
-func _refresh_info() -> void:
-	var clock: Clock = TimeManager.clock
-	var night_tag: String = "（夜间）" if TimeManager.is_night() else ""
-
-	_info_label.text = "第 %d 年 · %s %d 日  %02d:%02d\n天气 %s%s\n体力 %d / %d      金币 %d G" % [
-		clock.year,
-		clock.season_name(),
-		clock.day,
-		clock.hour(),
-		clock.minute(),
-		TimeManager.weather_name(),
-		night_tag,
-		GameManager.stamina,
-		GameManager.MAX_STAMINA,
-		GameManager.money,
-	]
-
-	var crop: CropData = GameManager.selected_crop()
-	var crop_text: String = "无" if crop == null else "%s（%d 天成熟 · 售价 %d G）" % [
-		crop.display_name, crop.mature_days, crop.sell_price,
-	]
-
+func _update_tooltip() -> void:
 	if _farm_view == null:
 		_farm_view = get_tree().get_first_node_in_group("farm_view") as FarmView
 
-	var hover_text: String = "—"
-	if _farm_view != null and _farm_view.hovered_cell() != FarmView.NO_CELL:
-		hover_text = GameManager.describe(_farm_view.hovered_cell())
+	if _farm_view == null:
+		_tooltip.visible = false
+		return
 
-	_hint_label.text = "当前种子：%s\n指向格：%s\n\nWASD 移动 · Shift 跑 · 左键操作 · Q/E 转视角 · 滚轮缩放 · 1-5 换种子 · F10 过夜 · F9 存档 · F5 读档" % [
-		crop_text,
-		hover_text,
+	var cell: Vector2i = _farm_view.hovered_cell()
+	if cell == FarmView.NO_CELL:
+		_tooltip.visible = false
+		return
+
+	_tooltip_label.text = _describe_cell(cell)
+	_tooltip.reset_size()
+	_tooltip.visible = true
+
+	# 鼠标坐标要换算到「设计画布」的坐标系里（画布被整体缩放过）
+	var mouse: Vector2 = get_viewport().get_mouse_position() / _ui_scale
+	var target: Vector2 = mouse + Vector2(22.0, 18.0)
+	var limit: Vector2 = _root.size - _tooltip.size - Vector2(8.0, 8.0)
+	target.x = clampf(target.x, 8.0, maxf(8.0, limit.x))
+	target.y = clampf(target.y, 8.0, maxf(8.0, limit.y))
+	_tooltip.position = target
+
+
+## 格位信息的玩家向文案。
+##
+## 【为什么不直接用 GameManager.describe()】那个是给调试看的，
+##   带格位坐标、用词也偏技术。玩家界面上应该直接说"能做什么"。
+func _describe_cell(cell: Vector2i) -> String:
+	var tile: FarmTile = GameManager.farm.peek(cell)
+	if tile == null or tile.state == FarmTile.State.UNTILLED:
+		return "荒草地 —— 可以开垦"
+	if not tile.has_crop():
+		return "已翻好的土 —— 可以播种%s" % _selected_crop_name()
+
+	var data: CropData = CropDatabase.get_crop(tile.crop_id)
+	if data == null:
+		return "未知作物"
+	if data.is_mature(tile.growth):
+		return "%s —— 可以收获了！" % data.display_name
+	var watered: String = "已浇水" if tile.state == FarmTile.State.WATERED else "还没浇水"
+	return "%s · 生长 %d/%d 天 · %s" % [data.display_name, tile.growth, data.mature_days, watered]
+
+
+func _selected_crop_name() -> String:
+	var crop: CropData = GameManager.selected_crop()
+	return "" if crop == null else "（%s）" % crop.display_name
+
+
+func _update_help_state() -> void:
+	if _help_state == null:
+		return
+	var cell_text: String = "—"
+	if _farm_view != null and _farm_view.hovered_cell() != FarmView.NO_CELL:
+		cell_text = _describe_cell(_farm_view.hovered_cell())
+	_help_state.text = "体力 %d / %d      指向：%s" % [
+		GameManager.stamina, GameManager.MAX_STAMINA, cell_text,
 	]
 
 
-## 调试快捷键：F5 存档 / F9 读档（正式版会换成菜单，这里只为验证存档链路）
+# ── 消息条 ───────────────────────────────────────────────
+
+func _on_toast(text: String) -> void:
+	var toast: HudToast = HudToast.make(text)
+	_toast_box.add_child(toast)
+	_make_click_through(toast)
+	_toasts.append(toast)
+	# 超出上限就丢掉最老的，避免消息刷屏挡住画面
+	while _toasts.size() > MAX_TOASTS:
+		var oldest: HudToast = _toasts.pop_front()
+		if is_instance_valid(oldest):
+			oldest.queue_free()
+
+
+## 清掉已经自己销毁掉的条目，避免列表里堆悬空引用。
+func _prune_toasts() -> void:
+	if _toasts.is_empty():
+		return
+	var alive: Array[HudToast] = []
+	for toast: HudToast in _toasts:
+		if is_instance_valid(toast):
+			alive.append(toast)
+	_toasts = alive
+
+
+# ── 跨天横幅 ─────────────────────────────────────────────
+
+func _on_day_changed(_day: int, _season: int) -> void:
+	_show_banner("第 %d 年 · %s %d 日 · %s" % [
+		TimeManager.clock.year,
+		TimeManager.clock.season_name(),
+		TimeManager.clock.day,
+		TimeManager.weather_name(),
+	])
+
+
+## 跨天时中央浮出一行日期，再淡掉 —— 给玩家一个"新的一天开始了"的锚点。
+func _show_banner(text: String) -> void:
+	if _banner == null:
+		return
+	_banner.text = text
+	if _banner_tween != null and _banner_tween.is_valid():
+		_banner_tween.kill()
+
+	_banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_banner.scale = Vector2(0.88, 0.88)
+
+	_banner_tween = create_tween()
+	_banner_tween.set_parallel(true)
+	_banner_tween.tween_property(_banner, "modulate:a", 1.0, 0.30)
+	_banner_tween.tween_property(_banner, "scale", Vector2.ONE, 0.45) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_banner_tween.set_parallel(false)
+	_banner_tween.tween_interval(1.7)
+	_banner_tween.tween_property(_banner, "modulate:a", 0.0, 0.8)
+
+
+# ── 输入 ─────────────────────────────────────────────────
+
+## 调试快捷键：F5 存档 / F9 读档 / F1 帮助面板（正式版会换成菜单）
 func _unhandled_input(event: InputEvent) -> void:
+	# 注意：不能用 `event is InputEventKey and event.pressed` ——
+	# `and` 链不会让分析器收窄类型，会报 "property not present"（属性不存在）。
 	if not (event is InputEventKey):
 		return
 	var key: InputEventKey = event as InputEventKey
@@ -122,22 +362,27 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	match key.physical_keycode:
+		KEY_F1:
+			_help_panel.visible = not _help_panel.visible
+			get_viewport().set_input_as_handled()
 		KEY_F5:
 			SaveManager.save_game(1)
+			EventBus.toast.emit("已存档")
 			get_viewport().set_input_as_handled()
 		KEY_F9:
 			if SaveManager.load_game(1):
+				EventBus.toast.emit("已读档")
 				var view: FarmView = get_tree().get_first_node_in_group("farm_view") as FarmView
 				if view != null:
 					view.refresh_all()
+			else:
+				EventBus.toast.emit("没有找到存档")
 			get_viewport().set_input_as_handled()
 
 
-func _on_toast(text: String) -> void:
-	_toast_label.text = text
-	_toast_timer = TOAST_SECONDS
-
-
-func _on_day_changed(_day: int, _season: int) -> void:
-	_toast_label.text = "新的一天：%s" % TimeManager.weather_name()
-	_toast_timer = TOAST_SECONDS
+## 递归把 HUD 里所有控件设成鼠标穿透（见文件头「鼠标穿透」）。
+func _make_click_through(node: Node) -> void:
+	if node is Control:
+		(node as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for child: Node in node.get_children():
+		_make_click_through(child)

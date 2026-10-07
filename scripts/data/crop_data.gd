@@ -19,6 +19,10 @@ extends Resource
 @export var yield_min: int = 1
 @export var yield_max: int = 1
 
+## 品种代表色。M0/M1 用它给作物网格与 UI 图标上色（零素材的替代方案）。
+## 【M2 计划】换成 icon_texture，本字段退化为"找不到贴图时的兜底色"。
+@export var icon_color: Color = Color(0.42, 0.68, 0.32)
+
 ## ★ 首选：各生长阶段的完整模型场景（若素材包提供）
 @export var stage_scenes: Array[PackedScene] = []
 ## ★ 兜底：素材包不提供多阶段模型时，用同一模型 + 缩放模拟生长

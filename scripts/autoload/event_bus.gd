@@ -48,6 +48,8 @@ signal tile_changed(cell: Vector2i)
 
 signal money_changed(amount: int)
 signal stamina_changed(current: int, maximum: int)
+## 玩家换了手上的种子（按 1~9）。UI 据此刷新快捷栏的高亮。
+signal crop_selected(crop_id: String)
 
 # ── 存档 ─────────────────────────────────────────────────
 
