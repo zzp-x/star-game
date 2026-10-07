@@ -74,12 +74,18 @@ static func has_crop(id: String) -> bool:
 	return _cache.has(id)
 
 
+## 全部作物 id，顺序 = `_ensure_built()` 里的声明顺序。
+##
+## 【为什么不排序】快捷栏的格位顺序、数字键 1~9 各对应哪种作物，都由这个顺序决定。
+##   声明顺序是"春 → 夏 → 秋、由便宜到贵"，所以教学作物芜菁正好是 1 号格；
+##   按字母排序的话芜菁会掉到第 6 格，按 1 选出来的却是夏作物的蓝莓 ——
+##   玩家开局就会按 1，然后怎么种都种不下去，还以为游戏坏了。
+##   （Godot 的 Dictionary 保证按插入顺序遍历，这个前提是可靠的。）
 static func all_ids() -> Array[String]:
 	_ensure_built()
 	var out: Array[String] = []
 	for key: String in _cache:
 		out.append(key)
-	out.sort()
 	return out
 
 

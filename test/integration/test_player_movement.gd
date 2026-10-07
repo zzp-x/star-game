@@ -69,6 +69,30 @@ func test_ground_has_collision_body() -> void:
 	assert_not_null((shape_node as CollisionShape3D).shape, "CollisionShape3D 必须有 shape 资源")
 
 
+## ★ 回归测试 ★ 出生点必须在围栏之内、并且离树圈足够远。
+##
+## 曾经的 bug：出生点设在 (0, 0.2, 11) —— 围栏（±8.6 米）之外的树圈边上。
+## 相机固定在玩家的 +Z 后上方，一棵长在 z≈14 的树正好卡在「相机 → 玩家」
+## 这条视线上，开局主角就被树冠整个盖住，只能看到一半身体。
+## 这条测试锁死两件事：别把出生点放回围栏外；树圈别再向内收缩。
+func test_player_spawns_inside_the_fence_and_clear_of_trees() -> void:
+	var fence_half: float = Scenery.FIELD_HALF + Scenery.FENCE_OFFSET
+	var p: Vector3 = _player.global_position
+
+	assert_lt(
+		absf(p.x), fence_half - 0.5,
+		"出生点 x 应在围栏之内（围栏在 ±%.1f）" % fence_half,
+	)
+	assert_lt(
+		absf(p.z), fence_half - 0.5,
+		"出生点 z 应在围栏之内（围栏在 ±%.1f）——围栏外的空地是树圈，站那儿开局就被树挡住",
+	)
+	assert_lt(
+		Vector2(p.x, p.z).length(), Scenery.CLEAR_RADIUS - 3.0,
+		"出生点还必须离树圈至少 3 米，否则树冠会挡在相机与玩家之间",
+	)
+
+
 # ── 落地 ─────────────────────────────────────────────────
 
 func test_player_stands_on_ground() -> void:

@@ -77,6 +77,15 @@ func test_advance_day_action_is_bound() -> void:
 	)
 
 
+## ★ 回归测试 ★ 教学作物芜菁必须占 1 号格。
+## 曾经的坑：`all_ids()` 按 id 字母排序，"parsnip" 排到第 6 ——
+## 开局默认选中的芜菁高亮在 6 号格，按 1 选中的却是夏作物的蓝莓，
+## 玩家在春天按 1 怎么种都种不下去，看起来就像"游戏坏了"。
+func test_parsnip_occupies_slot_one() -> void:
+	var ids: Array[String] = CropDatabase.all_ids()
+	assert_eq(ids[0], "parsnip", "芜菁（教学作物）必须占 1 号格，快捷栏顺序 = 声明顺序（春→夏→秋）")
+
+
 # ── 代码读映射表的结果 ────────────────────────────────────
 
 ## ★ 核心用例 ★
