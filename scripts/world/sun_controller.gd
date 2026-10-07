@@ -13,7 +13,7 @@ extends DirectionalLight3D
 ## 正午高度角：春/夏高，秋/冬低（季节视觉差异的一半来自这里）
 ## 【注意】必须用 Array（字面量是常量表达式）；PackedFloat32Array(...) 不是，
 ## 写 `const X: PackedFloat32Array = PackedFloat32Array([...])` 会报
-## "isn't a constant expression"。
+## "isn't a constant expression"（不是常量表达式）。
 const ELEVATION_BY_SEASON: Array[float] = [58.0, 68.0, 46.0, 32.0]
 ## 方位角扫过的范围（度）：从东边升起到西边落下
 const AZIMUTH_START: float = -96.0

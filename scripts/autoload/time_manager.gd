@@ -8,6 +8,7 @@ extends Node
 ##
 ## 【信号发射顺序 · 不要改】一次 sleep() 的顺序是：
 ##   advance_to_next_day() → weather_rolled → day_changed → season_changed? → year_changed?
+##   即：推进日历 → 掷新天气 → 广播跨天 →（跨季？）→（跨年？）
 ##   天气必须先于 day_changed 掷出，否则 GameManager 拿不到「今天下没下雨」。
 ##
 ## ⚠️ 不要给本文件加 `class_name` —— 与 Autoload 单例名冲突。
@@ -58,7 +59,7 @@ func advance_one_minute() -> void:
 ## 进入次日。这是全项目唯一的跨天入口 —— 睡觉、F10 调试、床铺都走这里。
 ##
 ## 【发射顺序 · 不要改】day_ended(旧日期, 旧天气) → 日历推进 → 掷新天气
-##   → weather_rolled → day_changed → season_changed? → year_changed?
+##   （以上各步对应的信号名）→ weather_rolled → day_changed → season_changed? → year_changed?
 ##
 ##   ⚠️ day_ended 必须在日历推进**之前**发射，且携带**旧天气**。
 ##      作物生长判断的是"今天下没下雨"，而不是"明天会不会下雨"。

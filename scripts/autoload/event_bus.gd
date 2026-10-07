@@ -54,7 +54,7 @@ signal stamina_changed(current: int, maximum: int)
 signal game_saved(slot: int)
 signal game_loaded(slot: int)
 
-# ── UI ───────────────────────────────────────────────────
+# ── 界面（UI） ───────────────────────────────────────────────────
 
 ## 屏幕提示（"翻地""播种 芜菁""体力不足"…）
 signal toast(text: String)

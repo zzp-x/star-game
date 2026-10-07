@@ -42,7 +42,7 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# 注意：不能用 `event is InputEventKey and event.pressed` ——
-	# `and` 链不会让分析器收窄 event 的类型，会报 "property not present"。
+	# `and` 链不会让分析器收窄 event 的类型，会报 "property not present"（属性不存在）。
 	# 必须先单独判断类型，再取出强类型引用。
 	if not (event is InputEventKey):
 		return
