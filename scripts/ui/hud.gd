@@ -9,8 +9,11 @@ extends CanvasLayer
 ##   右下角  竖直体力条
 ##   底部中央 12 格快捷栏（当前选中的种子会高亮）
 ##   左下角  消息条（"翻地""播种 芜菁"…）
-##   左上角  按键帮助（F1 切换）
 ##   鼠标旁  指向格子的信息气泡
+##
+## 【为什么不放常驻帮助面板】M0.5 曾有一个左上角键位表，但它占了画面、
+##   又和"鼠标旁气泡"重复表达同一件事（能做什么）。键位说明属于**开场信息**，
+##   放在 README 与启动横幅里就够了，游戏画面留给游戏本身。
 ##
 ## 【为什么要自己做缩放】项目把 Stretch Mode 设成了 disabled
 ##   （3D 必须按原生分辨率渲染，见 DESIGN.md §5.1），
@@ -24,8 +27,6 @@ extends CanvasLayer
 const DESIGN_HEIGHT: float = 1080.0
 const MARGIN: float = 26.0
 const MAX_TOASTS: int = 3
-## 帮助面板宽度
-const HELP_WIDTH: float = 430.0
 ## 右上角留给常驻「菜单」按钮的高度 —— 状态面板要往下让开这一条
 const MENU_BAND: float = 56.0
 
@@ -46,9 +47,6 @@ var _banner_box: PanelContainer = null
 var _banner: Label = null
 var _banner_tween: Tween = null
 
-var _help_panel: PanelContainer = null
-var _help_state: Label = null
-
 var _farm_view: FarmView = null
 
 
@@ -68,7 +66,6 @@ func _ready() -> void:
 	_build_tooltip()
 	_build_toasts()
 	_build_banner()
-	_build_help()
 
 	_make_click_through(self)
 	_root.queue_redraw()
@@ -88,7 +85,6 @@ func _process(_delta: float) -> void:
 	_update_scale()
 	_update_tooltip()
 	_prune_toasts()
-	_update_help_state()
 
 
 # ── 缩放 ─────────────────────────────────────────────────
@@ -187,54 +183,6 @@ func _build_banner() -> void:
 	_root.add_child(_banner_box)
 
 
-func _build_help() -> void:
-	_help_panel = UiTheme.make_panel()
-	_help_panel.anchor_left = 0.0
-	_help_panel.anchor_top = 0.0
-	_help_panel.offset_left = MARGIN
-	_help_panel.offset_top = MARGIN
-	_help_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	var column: VBoxContainer = VBoxContainer.new()
-	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_theme_constant_override("separation", 8)
-
-	var title: Label = UiTheme.make_label("操作", UiTheme.FONT_TITLE, UiTheme.TEXT_DARK, 0)
-	column.add_child(title)
-	# 标题下一道金色分隔线，让"标题 / 键位表 / 状态行"三段读得开
-	column.add_child(HSeparator.new())
-
-	var grid: GridContainer = GridContainer.new()
-	grid.columns = 2
-	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	grid.add_theme_constant_override("h_separation", 20)
-	grid.add_theme_constant_override("v_separation", 6)
-	var rows: Array[PackedStringArray] = [
-		PackedStringArray(["WASD / 方向键", "移动"]),
-		PackedStringArray(["Shift", "奔跑"]),
-		PackedStringArray(["鼠标左键", "使用手持物"]),
-		PackedStringArray(["1 / 2 / 3", "锄头 / 洒水壶 / 镰刀"]),
-		PackedStringArray(["4~9 · 0 · - · =", "选择种子"]),
-		PackedStringArray(["Q / E", "旋转视角"]),
-		PackedStringArray(["滚轮", "缩放"]),
-		PackedStringArray(["F10", "睡觉，进入次日"]),
-		PackedStringArray(["F5 / F9", "存档 / 读档"]),
-		PackedStringArray(["ESC", "菜单 / 退出游戏"]),
-		PackedStringArray(["F1", "显示 / 隐藏本面板"]),
-	]
-	for row: PackedStringArray in rows:
-		# 键名用深金色加粗 —— 读起来像"按键帽"，和后面的说明拉开层次
-		grid.add_child(UiTheme.make_label(row[0], UiTheme.FONT_SMALL, UiTheme.GOLD_DEEP, 0))
-		grid.add_child(UiTheme.make_label(row[1], UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 0))
-	column.add_child(grid)
-
-	_help_state = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 0)
-	column.add_child(_help_state)
-
-	_help_panel.add_child(column)
-	_root.add_child(_help_panel)
-
-
 # ── 刷新 ─────────────────────────────────────────────────
 
 func _update_tooltip() -> void:
@@ -306,21 +254,6 @@ func _hand_hint(hand: HotbarEntry, verb: int, fallback: String) -> String:
 	return fallback
 
 
-func _update_help_state() -> void:
-	if _help_state == null:
-		return
-	var cell_text: String = "—"
-	if _farm_view != null and _farm_view.hovered_cell() != FarmView.NO_CELL:
-		cell_text = _describe_cell(_farm_view.hovered_cell())
-	var hand: HotbarEntry = GameManager.selected_entry()
-	_help_state.text = "体力 %d / %d      手持：%s      指向：%s" % [
-		GameManager.stamina,
-		GameManager.MAX_STAMINA,
-		"空手" if hand == null or hand.is_empty() else hand.label,
-		cell_text,
-	]
-
-
 # ── 消息条 ───────────────────────────────────────────────
 
 func _on_toast(text: String) -> void:
@@ -387,7 +320,7 @@ func _show_banner(text: String) -> void:
 
 # ── 输入 ─────────────────────────────────────────────────
 
-## 调试快捷键：F5 存档 / F9 读档 / F1 帮助面板（正式版会换成菜单）
+## 调试快捷键：F5 存档 / F9 读档（正式版会换成菜单）
 func _unhandled_input(event: InputEvent) -> void:
 	# 注意：不能用 `event is InputEventKey and event.pressed` ——
 	# `and` 链不会让分析器收窄类型，会报 "property not present"（属性不存在）。
@@ -398,9 +331,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	match key.physical_keycode:
-		KEY_F1:
-			_help_panel.visible = not _help_panel.visible
-			get_viewport().set_input_as_handled()
 		KEY_F5:
 			SaveManager.save_game(1)
 			EventBus.toast.emit("已存档")
