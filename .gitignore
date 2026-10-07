@@ -1,0 +1,49 @@
+# ══════════════════════════════════════════════════
+#  Star Game —— Git 忽略规则
+#  ⚠️ 注意：*.import 文件必须提交（Godot 4 需要它来定位导入产物）
+# ══════════════════════════════════════════════════
+
+# ── Godot 4 引擎 ────────────────────────────────
+.godot/
+/android/
+export_presets.cfg
+
+# 翻译产物（由 .po/.csv 生成）
+*.translation
+
+# ── 构建/导出产物 ───────────────────────────────
+build/
+exports/
+*.pck
+*.pdb
+*.dmg
+*.app
+
+# ── C# / .NET（本项目用 GDScript，仅防止误提交）──
+.mono/
+data_*/
+mono_crash.*.json
+bin/
+obj/
+*.csproj
+*.sln
+
+# ── 编辑器 ─────────────────────────────────────
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+# ── 操作系统 ───────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ── 临时文件 ───────────────────────────────────
+*.tmp
+*.bak
+*.orig
+*.rej
