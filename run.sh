@@ -113,6 +113,26 @@ if [ ! -f "$PROJECT_FILE" ]; then
 	exit 2
 fi
 
+# ── 预检：仓库里的 .bat 必须是纯 ASCII ─────────────────────
+# 原因：cmd.exe 按「字节」跟踪读取位置、按「代码页」解码字符。批处理文件里
+# 只要出现多字节字符（中文即 UTF-8 三字节），两者就会错位，导致后续行被腰斩、
+# rem 注释被当成命令执行。Windows 那边由 tools/godot.ps1 做同样检查，
+# 这里补一份是为了让 Linux / macOS 上的 CI 也能提前拦住。
+bat_bad=''
+for f in "$PROJECT_ROOT"/*.bat; do
+	[ -f "$f" ] || continue
+	n=$(LC_ALL=C tr -d '\000-\177' <"$f" | wc -c | tr -d ' ')
+	if [ "$n" -gt 0 ]; then
+		bat_bad="$bat_bad\n    $(basename "$f")（$n 个非 ASCII 字节）"
+	fi
+done
+if [ -n "$bat_bad" ]; then
+	warn_ '⚠ 以下 .bat 文件含非 ASCII 字符，cmd.exe 解析会错乱：'
+	printf '%b\n' "$bat_bad"
+	dim_ '  这些文件必须保持纯 ASCII；中文提示请写进 tools/godot.ps1。'
+	echo
+fi
+
 if ! GODOT="$(find_godot)"; then
 	fail_ '没有在本机找到 Godot。'
 	echo
@@ -163,6 +183,14 @@ if [ "$ACTION" = "check" ]; then
 fi
 
 dim_ "启动：godot $ARGS $EXTRA_ARGS"
+
+# 操作提示放在启动之前 —— 否则脚本直接跑起来后提示容易被后面的输出冲掉
+if [ "$ACTION" = "play" ]; then
+	echo
+	dim_ '操作提示：左键点草地翻地 → 再点播种 → 再点浇水 → F10 过夜（重复 4 次收芜菁）'
+	dim_ '          Q/E 转视角 · 滚轮缩放 · 1-5 换种子 · F5 存档 · F9 读档'
+fi
+
 rule
 
 # shellcheck disable=SC2086  # 有意做词分割，以便把参数逐个传给 Godot
@@ -183,11 +211,5 @@ case "$ACTION" in
 		if [ "$RC" -eq 0 ]; then ok_ '编辑器已关闭'; else fail_ "编辑器异常退出（退出码 $RC）"; fi
 		;;
 esac
-
-if [ "$ACTION" = "play" ]; then
-	echo
-	dim_ '操作提示：左键点草地翻地 → 再点播种 → 再点浇水 → F10 过夜（重复 4 次收芜菁）'
-	dim_ '          Q/E 转视角 · 滚轮缩放 · 1-5 换种子 · F5 存档 · F9 读档'
-fi
 
 exit "$RC"

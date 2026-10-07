@@ -53,6 +53,28 @@ function SayWarn  { param([string]$Text) Write-Host $Text -ForegroundColor Yello
 function SayFail  { param([string]$Text) Write-Host $Text -ForegroundColor Red }
 function SayRule  { Write-Host ('─' * 58) -ForegroundColor DarkGray }
 
+# ── 预检：仓库里的 .bat 必须是纯 ASCII ─────────────────
+# 原因：cmd.exe 按「字节」跟踪自己在批处理文件中的读取位置，却按「代码页」
+# 解码字符。文件里只要出现多字节字符（中文即 UTF-8 三字节），两者就错位，
+# 结果是后续行被腰斩、rem 注释被当作命令执行（报一堆"不是内部或外部命令"）。
+# 所以 .bat 一律保持纯 ASCII，所有中文提示写在 tools\godot.ps1 里
+# （本文件是 UTF-8 带 BOM，PowerShell 能正确解码）。
+function Get-NonAsciiBat {
+    $bad = New-Object System.Collections.Generic.List[string]
+    $bats = Get-ChildItem -LiteralPath $ProjectRoot -Filter '*.bat' -File -ErrorAction SilentlyContinue
+    foreach ($f in $bats) {
+        $count = 0
+        foreach ($b in [System.IO.File]::ReadAllBytes($f.FullName)) {
+            if ($b -gt 127) { $count++ }
+        }
+        if ($count -gt 0) { $bad.Add("$($f.Name)（$count 个非 ASCII 字节）") }
+    }
+    # 直接返回 ToArray()：PowerShell 会把单元素数组展开成标量，
+    # 调用方用 @(...) 再包回数组即可。这里千万不要加前置逗号 ——
+    # 那会把空数组包成「含一个空数组的数组」，导致 Count=1 误报。
+    return $bad.ToArray()
+}
+
 # ── 版本解析：Godot_v4.7.2-stable_win64.exe → 4.7.2 ────
 function Get-GodotVersion {
     param([string]$Path)
@@ -214,6 +236,15 @@ if (-not (Test-Path -LiteralPath $ProjectFile)) {
     exit 2
 }
 
+# ── 预检：批处理文件编码 ────────────────────────────────
+$badBats = @(Get-NonAsciiBat)
+if ($badBats.Count -gt 0) {
+    SayWarn '⚠ 以下 .bat 文件含非 ASCII 字符，cmd.exe 解析会错乱：'
+    foreach ($b in $badBats) { Say "    $b" }
+    Say '  这些文件必须保持纯 ASCII；中文提示请写进 tools\godot.ps1。'
+    Write-Host ''
+}
+
 # ── 找引擎 ──────────────────────────────────────────────
 try {
     $godot = Resolve-Godot
@@ -327,6 +358,15 @@ if ($Action -eq 'check') {
 }
 
 Say "启动：godot $($gArgs -join ' ')"
+
+# 操作提示放在启动之前 —— 双击运行且正常退出时不会有暂停，
+# 放在后面会被一闪而过。
+if ($Action -eq 'play') {
+    Write-Host ''
+    Say '操作提示：左键点草地翻地 → 再点播种 → 再点浇水 → F10 过夜（重复 4 次收芜菁）'
+    Say '          Q/E 转视角 · 滚轮缩放 · 1-5 换种子 · F5 存档 · F9 读档'
+}
+
 SayRule
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -355,12 +395,6 @@ switch ($Action) {
     default {
         if ($code -eq 0) { SayOk '完成' } else { SayFail "异常退出（退出码 $code）"; $failed = $true }
     }
-}
-
-if ($Action -eq 'play') {
-    Write-Host ''
-    Say '操作提示：左键点草地翻地 → 再点播种 → 再点浇水 → F10 过夜（重复 4 次收芜菁）'
-    Say '          Q/E 转视角 · 滚轮缩放 · 1-5 换种子 · F5 存档 · F9 读档'
 }
 
 if ($failed) { exit $code }

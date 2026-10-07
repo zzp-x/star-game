@@ -1,24 +1,24 @@
 @echo off
+rem ============================================================
+rem  Star Game - open the Godot editor.  Double-click this file.
+rem
+rem  First launch tip: if Godot asks to enable a plugin, go to
+rem  Project -> Project Settings -> Plugins and tick "Gut"
+rem  (only needed for running tests, not for playing).
+rem
+rem  !!! KEEP THIS FILE PURE ASCII !!!
+rem  See the note at the top of run.bat for why. Short version:
+rem  cmd.exe mis-parses multi-byte characters inside .bat files.
+rem  All Chinese text lives in tools\godot.ps1.
+rem ============================================================
+
 chcp 65001 >nul
 setlocal EnableExtensions
-
-rem ===========================================================
-rem  Star Game · 打开 Godot 编辑器（双击本文件）
-rem  首次打开若提示启用插件，去
-rem  Project → Project Settings → Plugins 勾选 Gut（跑测试才需要）
-rem ===========================================================
-
-set "PAUSE_END="
-echo %cmdcmdline% | find /i "%~nx0" >nul 2>&1 && set "PAUSE_END=1"
-if defined SG_NO_PAUSE set "PAUSE_END="
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\godot.ps1" -Action editor %*
 set "RC=%ERRORLEVEL%"
 
-if not "%RC%"=="0" (
-    echo.
-    echo [!] 编辑器异常退出，退出码 %RC% ，请查看上方信息。
-)
+rem The editor has its own window, so only pause when it failed.
+if not "%RC%"=="0" if not defined SG_NO_PAUSE pause
 
-if defined PAUSE_END pause
 endlocal & exit /b %RC%

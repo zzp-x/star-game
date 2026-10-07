@@ -66,6 +66,26 @@ git lfs install --local
 | `SG_NO_PAUSE` | 置 1 则脚本结束时不"按任意键"（供 CI 调用） |
 | `SG_NO_DOWNLOAD` | 置 1 则禁止自动下载 Godot |
 
+结束时的暂停规则：`run.bat` / `editor.bat` **只在失败时**暂停（成功时窗口直接关掉，
+游戏和编辑器有各自的窗口）；`test.bat` **总是**暂停，因为测试报告就是要看的。
+
+### ⚠️ 改 `.bat` 前必读：这些文件必须保持「纯 ASCII + CRLF」
+
+`.bat` 里**一个非 ASCII 字符都不能有** —— 包括 `rem` 注释。原因不是显示乱码那么简单：
+
+> **cmd.exe 按「字节」跟踪自己在批处理文件里读到哪，却按「代码页」解码字符。**
+> 文件里只要出现多字节字符（中文即 UTF-8 三字节），两者就会**错位**，
+> 后续行被从中间截断、`rem` 注释被当命令执行，报一堆"不是内部或外部命令"。
+
+所以：**所有中文提示都写在 `tools/godot.ps1` 里**（它是 UTF-8 带 BOM，PowerShell 能正确解码），
+`.bat` 只做一层极薄的壳。同理行尾必须是 CRLF（`.gitattributes` 里已用
+`*.bat text eol=crlf` 强制，别把它删掉）。
+
+这条约束有**两道自动检查**兜底，正常运行时无感，一旦违规就会告警：
+
+- `tools/godot.ps1` —— Windows 侧，每次启动前扫一遍仓库根目录的 `*.bat`
+- `run.sh` —— 同一份检查，方便 Linux / macOS 上的 CI 提前拦住
+
 ### 方式二：手动命令
 
 ```bash
@@ -143,8 +163,10 @@ godot --headless -s addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_gri
 ```
 star-game/
 ├─ run.bat / editor.bat / test.bat   # ★ Windows 一键脚本（双击即用）
+│                                    #   ⚠ 必须保持纯 ASCII + CRLF，见上文
 ├─ run.sh                            # ★ macOS / Linux 等价脚本
 ├─ tools/godot.ps1                   # 启动器本体：定位 Godot + 分发动作
+│                                    #   ⚠ 必须保持 UTF-8 带 BOM，否则中文乱码
 ├─ project.godot          # ★ 渲染器 / 物理 / 输入映射 / 警告等级都在这里
 ├─ .gitattributes         # Git LFS 规则（*.glb / *.wav / *.hdr …）
 ├─ .gutconfig.json        # GUT 测试配置

@@ -1,25 +1,26 @@
 @echo off
+rem ============================================================
+rem  Star Game - run all unit + integration tests.
+rem  Double-click this file.
+rem
+rem  No editor, no asset, no window needed.
+rem
+rem  !!! KEEP THIS FILE PURE ASCII !!!
+rem  See the note at the top of run.bat for why. Short version:
+rem  cmd.exe mis-parses multi-byte characters inside .bat files.
+rem  All Chinese text lives in tools\godot.ps1.
+rem
+rem  Set SG_NO_PAUSE=1 to skip the closing "press any key"
+rem  (this is what CI should use).
+rem ============================================================
+
 chcp 65001 >nul
 setlocal EnableExtensions
-
-rem ===========================================================
-rem  Star Game · 跑全部单元测试 + 集成测试（双击本文件）
-rem
-rem  不需要打开编辑器、不需要素材、不需要开窗口。
-rem  设 SG_NO_PAUSE=1 可跳过结束时的“按任意键”（供 CI 调用）。
-rem ===========================================================
-
-set "PAUSE_END="
-echo %cmdcmdline% | find /i "%~nx0" >nul 2>&1 && set "PAUSE_END=1"
-if defined SG_NO_PAUSE set "PAUSE_END="
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0tools\godot.ps1" -Action test %*
 set "RC=%ERRORLEVEL%"
 
-if not "%RC%"=="0" (
-    echo.
-    echo [!] 有测试未通过，退出码 %RC%
-)
+rem The test report IS the output, so always pause by default.
+if not defined SG_NO_PAUSE pause
 
-if defined PAUSE_END pause
 endlocal & exit /b %RC%
