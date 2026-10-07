@@ -7,8 +7,11 @@ extends VBoxContainer
 ##   三块小面板各自独立，信息层级一眼分明，也方便以后单独替换。
 ## 【为什么中间是"时间 + 天气"合在一块】天气决定了今天要不要浇水，
 ##   把它和时间放一起看最顺手。
+## 【图标为什么要套"勋章"底衬】羊皮纸底色浅，太阳/雨滴这类浅色图标
+##   直接放上去对比度不够。垫一圈半透明深棕圆底，图标立刻"沉"进面板里，
+##   这是星露谷小面板的共同做法。
 
-const PANEL_WIDTH: float = 190.0
+const PANEL_WIDTH: float = 212.0
 
 var _season_icon: UiIcon
 var _date_label: Label
@@ -25,7 +28,7 @@ var _last_signature: String = ""
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	alignment = BoxContainer.ALIGNMENT_BEGIN
-	add_theme_constant_override("separation", 8)
+	add_theme_constant_override("separation", 10)
 	_build()
 	_refresh()
 
@@ -35,10 +38,10 @@ func _process(_delta: float) -> void:
 
 
 func _build() -> void:
-	# ① 日期：季节图标 + "春 3 日" + "第 1 年"
-	var date_row: HBoxContainer = _row(10)
+	# ① 日期：季节勋章 + "春 3 日" + "第 1 年"
+	var date_row: HBoxContainer = _row(12)
 	_season_icon = UiIcon.make(UiIcon.Kind.SEASON, UiTheme.SEASON_COLORS[0], 30.0)
-	date_row.add_child(_season_icon)
+	date_row.add_child(UiTheme.make_medallion(_season_icon, 30.0))
 
 	var date_text: VBoxContainer = VBoxContainer.new()
 	date_text.add_theme_constant_override("separation", -2)
@@ -51,9 +54,9 @@ func _build() -> void:
 	add_child(_wrap(date_row))
 
 	# ② 时间 + 天气
-	var time_row: HBoxContainer = _row(9)
+	var time_row: HBoxContainer = _row(12)
 	_weather_icon = UiIcon.make(UiIcon.Kind.SUNNY, Color.WHITE, 28.0)
-	time_row.add_child(_weather_icon)
+	time_row.add_child(UiTheme.make_medallion(_weather_icon, 28.0))
 	_time_label = UiTheme.make_label("6:00", UiTheme.FONT_TITLE, UiTheme.TEXT_DARK)
 	time_row.add_child(_time_label)
 	_period_label = UiTheme.make_label("上午", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3)
@@ -61,15 +64,22 @@ func _build() -> void:
 	time_row.add_child(_period_label)
 	add_child(_wrap(time_row))
 
-	# ③ 金钱：金币图标 + 数字（右对齐）+ 单位
-	var gold_row: HBoxContainer = _row(8)
-	gold_row.add_child(UiIcon.make(UiIcon.Kind.COIN, Color.WHITE, 26.0))
-	_gold_label = UiTheme.make_label("0", UiTheme.FONT_TITLE, UiTheme.GOLD)
-	_gold_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_gold_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	gold_row.add_child(_gold_label)
-	gold_row.add_child(UiTheme.make_label("G", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3))
-	add_child(_wrap(gold_row))
+	# ③ 金钱：星露谷的钱面板是"金币图标 + 数字"独占一栏，底色比前两块深
+	add_child(_wrap(_gold_row()))
+
+
+## 钱面板单独建：金币图标更大、数字用金色加粗 —— 它是三块里最想被看到的一块。
+func _gold_row() -> HBoxContainer:
+	var row: HBoxContainer = _row(10)
+	row.add_child(UiTheme.make_medallion(UiIcon.make(UiIcon.Kind.COIN, Color.WHITE, 24.0), 24.0))
+	_gold_label = UiTheme.make_label("0", UiTheme.FONT_TITLE + 2, UiTheme.GOLD_DEEP)
+	_gold_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(_gold_label)
+
+	var unit: Label = UiTheme.make_label("G", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3)
+	unit.size_flags_vertical = Control.SIZE_SHRINK_END
+	row.add_child(unit)
+	return row
 
 
 ## 面板统一宽度 + 右对齐（SHRINK_END 让它在 VBox 里靠右，不会被拉满屏宽）

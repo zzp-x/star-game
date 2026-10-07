@@ -222,12 +222,13 @@ star-game/
 │  │  ├─ proc_textures.gd #   程序化草地/农田格线贴图（零图片依赖）
 │  │  └─ scenery.gd       #   树/灌木/石头/栅栏，固定种子可复现
 │  └─ ui/
-│     ├─ ui_theme.gd      #   星露谷配色 + 木框羊皮纸 9-slice 面板 + 按钮样式
+│     ├─ ui_theme.gd      #   星露谷 UI 主题：三层木框 9-slice + 烤进贴图的硬投影
+│     │                   #   + 立体格子（落影高光）+ 选中格金色辉光 + 按钮三态
 │     ├─ ui_icon.gd       #   全部图标用 _draw() 手绘（作物/金币/天气/季节/工具）
-│     ├─ hud.gd           #   HUD 装配 + 按 1080p 基准缩放 + 帮助面板
-│     ├─ hud_status.gd    #   右上：日期 / 时钟 / 天气 / 金币
-│     ├─ hud_hotbar.gd    #   底部居中：12 格快捷栏（前 3 格工具 + 9 格种子）
-│     ├─ hud_energy.gd    #   右下：体力条
+│     ├─ hud.gd           #   HUD 装配 + 按 1080p 基准缩放 + 帮助面板 + 日期木牌横幅
+│     ├─ hud_status.gd    #   右上：日期 / 时钟 / 天气 / 金币（图标带"勋章"圆底衬）
+│     ├─ hud_hotbar.gd    #   底部居中：12 格快捷栏 + 悬挑名称木牌 + 圆形按键徽章
+│     ├─ hud_energy.gd    #   右下：厚木框体力条
 │     ├─ pause_menu.gd    #   独立 CanvasLayer：ESC 呼出，继续/保存/退出
 │     └─ hud_toast.gd     #   浮动提示（自己管生命周期）
 └─ test/

@@ -119,20 +119,31 @@ func _build_overlay() -> void:
 
 	var column: VBoxContainer = VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_theme_constant_override("separation", 10)
+	column.add_theme_constant_override("separation", 12)
 	panel.add_child(column)
 
-	var title: Label = UiTheme.make_label("游戏暂停", UiTheme.FONT_TITLE, UiTheme.TEXT_DARK)
+	var title: Label = UiTheme.make_label("游戏暂停", UiTheme.FONT_TITLE + 4, UiTheme.TEXT_DARK, 0)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
+	# 标题下一道金色装饰线 —— 把"标题区"和"按钮区"分开，菜单立刻不像一摞方块
+	var rule: HSeparator = HSeparator.new()
+	rule.modulate = Color(0.70, 0.47, 0.06, 0.8)
+	column.add_child(rule)
 
-	_resume_button = _add_action(column, "继续游戏", _on_resume)
-	_add_action(column, "保存进度", _on_save)
-	_add_action(column, "保存并退出", _on_save_and_quit)
-	_add_action(column, "退出游戏", _on_quit)
+	var button_box: VBoxContainer = VBoxContainer.new()
+	button_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button_box.add_theme_constant_override("separation", 12)
+	column.add_child(button_box)
 
-	_note = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3)
+	_resume_button = _add_action(button_box, "继续游戏", _on_resume)
+	_add_action(button_box, "保存进度", _on_save)
+	_add_action(button_box, "保存并退出", _on_save_and_quit)
+	_add_action(button_box, "退出游戏", _on_quit)
+
+	_note = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 0)
 	_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_note.custom_minimum_size = Vector2(BUTTON_WIDTH, 0.0)
 	column.add_child(_note)
 
 

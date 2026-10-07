@@ -42,6 +42,7 @@ var _tooltip_label: Label = null
 var _toast_box: VBoxContainer = null
 var _toasts: Array[HudToast] = []
 
+var _banner_box: PanelContainer = null
 var _banner: Label = null
 var _banner_tween: Tween = null
 
@@ -153,7 +154,7 @@ func _build_tooltip() -> void:
 	_tooltip = UiTheme.make_panel()
 	_tooltip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_tooltip.visible = false
-	_tooltip_label = UiTheme.make_label("", UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 3)
+	_tooltip_label = UiTheme.make_label("", UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 0)
 	_tooltip.add_child(_tooltip_label)
 	_root.add_child(_tooltip)
 
@@ -173,21 +174,17 @@ func _build_toasts() -> void:
 
 
 func _build_banner() -> void:
-	_banner = UiTheme.make_label("", 44, UiTheme.TEXT_LIGHT, 8)
+	# 木牌横幅：裸文字压在 3D 画面上没有"落款"的仪式感，
+	# 一块带投影的木牌让"新的一天开始了"更像一个正式的事件。
+	_banner_box = UiTheme.make_panel()
+	_banner_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_banner_box.visible = false
+
+	_banner = UiTheme.make_label("", 40, UiTheme.TEXT_DARK, 0)
 	_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_banner.anchor_left = 0.5
-	_banner.anchor_right = 0.5
-	_banner.anchor_top = 0.5
-	_banner.anchor_bottom = 0.5
-	_banner.offset_left = -460.0
-	_banner.offset_right = 460.0
-	_banner.offset_top = -60.0
-	_banner.offset_bottom = 60.0
-	_banner.pivot_offset = Vector2(460.0, 60.0)
-	_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	_root.add_child(_banner)
+	_banner_box.add_child(_banner)
+	_root.add_child(_banner_box)
 
 
 func _build_help() -> void:
@@ -200,14 +197,18 @@ func _build_help() -> void:
 
 	var column: VBoxContainer = VBoxContainer.new()
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_theme_constant_override("separation", 6)
-	column.add_child(UiTheme.make_label("操作", UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 3))
+	column.add_theme_constant_override("separation", 8)
+
+	var title: Label = UiTheme.make_label("操作", UiTheme.FONT_TITLE, UiTheme.TEXT_DARK, 0)
+	column.add_child(title)
+	# 标题下一道金色分隔线，让"标题 / 键位表 / 状态行"三段读得开
+	column.add_child(HSeparator.new())
 
 	var grid: GridContainer = GridContainer.new()
 	grid.columns = 2
 	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	grid.add_theme_constant_override("h_separation", 18)
-	grid.add_theme_constant_override("v_separation", 4)
+	grid.add_theme_constant_override("h_separation", 20)
+	grid.add_theme_constant_override("v_separation", 6)
 	var rows: Array[PackedStringArray] = [
 		PackedStringArray(["WASD / 方向键", "移动"]),
 		PackedStringArray(["Shift", "奔跑"]),
@@ -222,11 +223,12 @@ func _build_help() -> void:
 		PackedStringArray(["F1", "显示 / 隐藏本面板"]),
 	]
 	for row: PackedStringArray in rows:
-		grid.add_child(UiTheme.make_label(row[0], UiTheme.FONT_SMALL, UiTheme.TEXT_DARK, 3))
-		grid.add_child(UiTheme.make_label(row[1], UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3))
+		# 键名用深金色加粗 —— 读起来像"按键帽"，和后面的说明拉开层次
+		grid.add_child(UiTheme.make_label(row[0], UiTheme.FONT_SMALL, UiTheme.GOLD_DEEP, 0))
+		grid.add_child(UiTheme.make_label(row[1], UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 0))
 	column.add_child(grid)
 
-	_help_state = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 3)
+	_help_state = UiTheme.make_label("", UiTheme.FONT_SMALL, UiTheme.TEXT_MUTED, 0)
 	column.add_child(_help_state)
 
 	_help_panel.add_child(column)
@@ -355,25 +357,32 @@ func _on_day_changed(_day: int, _season: int) -> void:
 	])
 
 
-## 跨天时中央浮出一行日期，再淡掉 —— 给玩家一个"新的一天开始了"的锚点。
+## 跨天时中央浮出一块日期木牌，再淡掉 —— 给玩家一个"新的一天开始了"的锚点。
 func _show_banner(text: String) -> void:
-	if _banner == null:
+	if _banner_box == null:
 		return
 	_banner.text = text
 	if _banner_tween != null and _banner_tween.is_valid():
 		_banner_tween.kill()
 
-	_banner.modulate = Color(1.0, 1.0, 1.0, 0.0)
-	_banner.scale = Vector2(0.88, 0.88)
+	# 面板是自适应大小的，先让它算好尺寸再居中、再定缩放轴心
+	_banner_box.reset_size()
+	_banner_box.position = (_root.size - _banner_box.size) * 0.5 + Vector2(0.0, -150.0)
+	_banner_box.pivot_offset = _banner_box.size * 0.5
+
+	_banner_box.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_banner_box.scale = Vector2(0.86, 0.86)
+	_banner_box.visible = true
 
 	_banner_tween = create_tween()
 	_banner_tween.set_parallel(true)
-	_banner_tween.tween_property(_banner, "modulate:a", 1.0, 0.30)
-	_banner_tween.tween_property(_banner, "scale", Vector2.ONE, 0.45) \
+	_banner_tween.tween_property(_banner_box, "modulate:a", 1.0, 0.30)
+	_banner_tween.tween_property(_banner_box, "scale", Vector2.ONE, 0.45) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_banner_tween.set_parallel(false)
 	_banner_tween.tween_interval(1.7)
-	_banner_tween.tween_property(_banner, "modulate:a", 0.0, 0.8)
+	_banner_tween.tween_property(_banner_box, "modulate:a", 0.0, 0.8)
+	_banner_tween.tween_callback(func() -> void: _banner_box.visible = false)
 
 
 # ── 输入 ─────────────────────────────────────────────────

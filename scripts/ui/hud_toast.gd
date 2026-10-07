@@ -30,9 +30,11 @@ func _process(delta: float) -> void:
 
 
 ## 造一条带文字的成品消息。
+## 【为什么不用描边字】消息落在羊皮纸面板上，底色是可控的 ——
+##   深棕字直接印上去最干净；描边留给压在 3D 场景上的文字用。
 static func make(text: String) -> HudToast:
 	var toast: HudToast = HudToast.new()
 	toast.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	toast.add_child(UiTheme.make_label(text, UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 3))
+	toast.add_child(UiTheme.make_label(text, UiTheme.FONT_BODY, UiTheme.TEXT_DARK, 0))
 	return toast

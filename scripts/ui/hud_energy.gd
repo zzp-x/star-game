@@ -8,16 +8,17 @@ extends Control
 ##   颜色再补一层信息：绿=充裕，黄=该回家了，红=快没力气了。
 ## 【为什么不显示具体数值】星露谷也不显示。想核对具体数字可以按 F1 看帮助面板。
 
-const BAR_WIDTH: float = 24.0
-const BAR_HEIGHT: float = 120.0
+const BAR_WIDTH: float = 30.0
+const BAR_HEIGHT: float = 140.0
 ## 外框里再留的边距
-const FRAME: float = 5.0
+const FRAME: float = 6.0
 
 var _last_ratio: float = -1.0
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 外框样式带落影，给右下各让一点绘制空间（不影响布局锚点）
 	custom_minimum_size = Vector2(BAR_WIDTH, BAR_HEIGHT)
 	queue_redraw()
 
@@ -37,30 +38,31 @@ func _ratio() -> float:
 
 
 func _draw() -> void:
-	var rect: Rect2 = Rect2(Vector2.ZERO, Vector2(BAR_WIDTH, BAR_HEIGHT))
+	var ratio: float = _ratio()
 
-	# 木质外框
-	draw_style_box(UiTheme.slot_style(), rect)
+	# 厚木外框（向外扩一圈，包住内条）
+	var outer: Rect2 = Rect2(Vector2.ZERO, Vector2(BAR_WIDTH, BAR_HEIGHT)).grow(6.0)
+	draw_style_box(UiTheme.frame_style(), outer)
 
-	var inner: Rect2 = rect.grow(-FRAME)
+	var inner: Rect2 = Rect2(Vector2.ZERO, Vector2(BAR_WIDTH, BAR_HEIGHT)).grow(-FRAME)
 	if inner.size.x <= 0.0 or inner.size.y <= 0.0:
 		return
 
 	# 空槽：先铺满深色，再往上盖填充 —— 这样"还剩多少"一眼可见
-	draw_rect(inner, Color(0.17, 0.12, 0.08, 1.0))
+	draw_rect(inner, Color(0.20, 0.13, 0.07, 1.0))
 
-	var ratio: float = _ratio()
 	var fill_height: float = inner.size.y * ratio
 	if fill_height > 0.5:
 		var fill: Rect2 = Rect2(
 			Vector2(inner.position.x, inner.position.y + inner.size.y - fill_height),
 			Vector2(inner.size.x, fill_height),
 		)
-		draw_rect(fill, UiTheme.energy_color(ratio))
+		var color: Color = UiTheme.energy_color(ratio)
+		draw_rect(fill, color)
 		# 左侧一条高光，让条子有点体积感
 		draw_rect(
-			Rect2(fill.position + Vector2(2.0, 1.0), Vector2(3.0, maxf(0.0, fill.size.y - 2.0))),
-			Color(1.0, 1.0, 1.0, 0.22),
+			Rect2(fill.position + Vector2(2.0, 1.0), Vector2(4.0, maxf(0.0, fill.size.y - 2.0))),
+			Color(1.0, 1.0, 1.0, 0.25),
 		)
 
 	# 分段刻度：每 25% 一道 —— 帮玩家估算"还够干几件事"
