@@ -18,12 +18,22 @@ const STAMINA_WATER: int = 2
 const STAMINA_PLANT: int = 1
 const STAMINA_HARVEST: int = 1
 
+## 快捷栏按键动作（project.godot 里映射到数字键 1…9）。
+## 顺序即格位顺序：TOOL_ACTIONS[0] 对应第 1 格。
+## 数量必须 ≥ 可选种子数，否则末尾的种子没有快捷键 —— test_input_map.gd 会检查。
+const TOOL_ACTIONS: Array[StringName] = [
+	&"tool_1", &"tool_2", &"tool_3", &"tool_4", &"tool_5",
+	&"tool_6", &"tool_7", &"tool_8", &"tool_9",
+]
+## 调试用：按一下就过一天，省得等时钟
+const ACTION_ADVANCE_DAY: StringName = &"debug_advance_day"
+
 ## 农场状态（L2）
 var farm: FarmGrid = FarmGrid.new()
 var money: int = INITIAL_MONEY
 var stamina: int = MAX_STAMINA
 
-## 当前选中的种子 id，按 1–5 切换
+## 当前选中的种子 id，按 1–9 切换
 var selected_crop_id: String = "parsnip"
 ## 收获产出数量的随机源（可 seed，便于复现）
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -50,14 +60,31 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not key.pressed or key.echo:
 		return
 
-	var slot: int = int(key.physical_keycode) - int(KEY_1)
-	# 快捷栏有 12 格，但 M0 只有 9 种作物，所以 1~9 有效
-	if slot >= 0 and slot < CropDatabase.all_ids().size():
-		_select_crop_slot(slot)
-		get_viewport().set_input_as_handled()
-	elif key.physical_keycode == KEY_F10:
+	if event.is_action_pressed(ACTION_ADVANCE_DAY):
 		TimeManager.sleep()
 		get_viewport().set_input_as_handled()
+		return
+
+	var slot: int = slot_for_event(event)
+	if slot >= 0:
+		use_slot(slot)
+		get_viewport().set_input_as_handled()
+
+
+## 判断这个事件按下了第几格快捷栏（0 起）；没命中任何 tool_N 动作时返回 −1。
+##
+## 【为什么按动作名找，而不是直接减 KEY_1】动作是 project.godot 里的唯一事实来源。
+##   写成 `keycode - KEY_1` 的话，输入映射表就变成了一份"看起来有用其实没人读"的摆设 ——
+##   别人照着映射表改了键，游戏里毫无变化，会排查到怀疑人生。
+##   走动作还有一个实际好处：将来做按键重绑定（Options 菜单）不用回来改这里。
+##   代价是动作数量必须与可选项数量对得上 —— 由 test_input_map.gd 守着。
+func slot_for_event(event: InputEvent) -> int:
+	var index: int = 0
+	while index < TOOL_ACTIONS.size():
+		if event.is_action_pressed(TOOL_ACTIONS[index]):
+			return index
+		index += 1
+	return -1
 
 
 # ── 操作入口（表现层只调这几个）──────────────────────────
@@ -213,7 +240,9 @@ func _on_day_changed(_day: int, _season: int) -> void:
 
 # ── 种子选择 ─────────────────────────────────────────────
 
-func _select_crop_slot(slot: int) -> void:
+## 选中第 slot 格（0 起）的种子。越界静默忽略 —— 快捷栏有 12 格但作物可能没那么多，
+## 越界不是错误，只是"这格是空的"。
+func use_slot(slot: int) -> void:
 	var ids: Array[String] = CropDatabase.all_ids()
 	if slot < 0 or slot >= ids.size():
 		return

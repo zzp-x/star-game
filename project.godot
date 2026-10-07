@@ -119,6 +119,26 @@ tool_5={
 "events": [Object(InputEventKey,"device":-1,"physical_keycode":53)
 ]
 }
+tool_6={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":54)
+]
+}
+tool_7={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":55)
+]
+}
+tool_8={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":56)
+]
+}
+tool_9={
+"deadzone": 0.2,
+"events": [Object(InputEventKey,"device":-1,"physical_keycode":57)
+]
+}
 open_inventory={
 "deadzone": 0.2,
 "events": [Object(InputEventKey,"device":-1,"physical_keycode":4194306)

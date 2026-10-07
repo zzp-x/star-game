@@ -2,8 +2,8 @@
 
 3D 低多边形农场生活模拟（星露谷 like）。固定斜俯视相机，桌面平台。
 
-> **当前状态：M0 已完成** —— 项目骨架 + 可跑通的核心农场闭环 + 单元测试全绿。
-> 完整设计方案见 [`docs/DESIGN.md`](docs/DESIGN.md)（v3.0）。
+> **当前状态：M0.5 已完成** —— 骨架 + 核心农场闭环 + 手感/观感补完（星露谷风格 HUD、程序化场景）。
+> 完整设计方案见 [`docs/DESIGN.md`](docs/DESIGN.md)（v3.0），进度见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。
 
 ---
 
@@ -101,14 +101,28 @@ godot --headless -s addons/gut/gut_cmdln.gd -gexit    # 跑全部测试
 | 操作 | 键 |
 | --- | --- |
 | 移动 | `W A S D`（**相对相机方向**） |
-| 跑步 | `Shift` |
+| 跑步 | `Shift`（按住） |
 | 使用工具 / 交互 | `鼠标左键`（作用于鼠标指向的格子） |
 | 旋转相机 | `Q` / `E`（90° 分步） |
 | 缩放 | `鼠标滚轮` |
 | 边缘平移 | 鼠标移到屏幕边缘 |
-| 切换种子 | `1` – `5` |
+| 切换种子 | `1` – `9`（共 12 格快捷栏；当前 9 种作物占前 9 格） |
+| 帮助 | `F1`（开关右上角帮助面板） |
 | 过夜 | `F10` |
 | 存档 / 读档 | `F5` / `F9` |
+
+> 移动是**相对相机**的：`W` 永远是"朝屏幕上方走"，不是"朝世界 −Z 走"。
+> 这是固定斜俯视相机的必然要求 —— 否则转过 90° 后 `W` 就会变侧向。
+>
+> ⚠️ **朝向约定**：Godot 里节点的"正前方"是局部 **−Z**（不是 +Z）。
+> 让角色面朝移动方向必须用 `atan2(−dir.x, −dir.z)`；写成 `atan2(dir.x, dir.z)`
+> 会把角色的**背面**对着前进方向 —— 表现为"倒着走"，而且很容易看漏。
+
+> ⚠️ **输入映射表就是事实来源**：`tool_1`…`tool_9` 这些动作定义在 `project.godot` 的
+> `[input]` 段，代码通过 `InputMap` 读它们，**不要**图省事直接在代码里比 `Key` 常量。
+> 那样映射表会变成摆设 —— 别人照着它改键，游戏里毫无变化，排查到怀疑人生。
+> 加新作物时记得同步加 `tool_10`（`test/integration/test_input_map.gd` 会拦住你）。
+
 
 **M0 的核心闭环**（一个键跑通）：
 
@@ -147,14 +161,23 @@ godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://test/integration -gexit
 godot --headless -s addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_grid.gd -gexit
 ```
 
-**当前状态：4 个测试脚本 · 56 个测试 · 171 条断言 · 全部通过。**
+**当前状态：6 个测试脚本 · 72 个测试 · 260 条断言 · 全部通过。**
 
-> **这些测试不启动场景树、不渲染任何东西、不需要任何素材。**
+> **单元测试的测试对象不启动场景树、不渲染任何东西、不需要任何素材。**
 > 因为游戏规则全部写在 `scripts/core/` 的纯逻辑类里。这是架构最重要的一条回报。
 >
 > `test/unit/` 验证「规则对不对」，`test/integration/` 验证「接线通不通」——
-> 后者抓到过一个单元测试永远发现不了的 bug：作物生长用了错一天的天气
-> （详见 `docs/DESIGN.md` §3.4 的 `day_ended` 说明）。
+> 后者抓到过两个单元测试永远发现不了的 bug：
+> ① 作物生长用了错一天的天气（详见 `docs/DESIGN.md` §3.4 的 `day_ended` 说明）；
+> ② 玩家**根本无法移动** —— `farm.tscn` 的地面只有网格没有碰撞体，角色一直在下坠。
+>
+> ⚠️ **教训**：第 ② 个 bug 在「解析通过 + 单元测试全绿 + 无头冒烟通过」三种检查下
+> 全部通过，因为三者都不包含「玩家 + 物理 + 地面」这三样同时在场的东西。
+> **涉及"手感"的东西必须在集成测试或实机里验证，不能靠单元测试兜底。**
+>
+> 另外 `test_player_movement.gd` 里特意留了一条**反证用例**
+> （把地面碰撞体删掉，玩家必须掉下去）—— 一条不可能失败的测试等于没测。
+
 
 ---
 
@@ -182,8 +205,22 @@ star-game/
 ├─ scripts/
 │  ├─ autoload/           # L3 单例：EventBus / GameManager / TimeManager / SaveManager
 │  ├─ core/               # ★ L2 纯逻辑：规则都在这里，可 GUT 直接测
-│  ├─ data/               # L1 数据：CropData / CropDatabase
-│  ├─ actors/  world/  ui/
+│  ├─ data/               # L1 数据：CropData / CropDatabase（含 icon_color）
+│  ├─ actors/
+│  │  ├─ player.gd        #   角色移动 + 朝向（−Z 约定）+ 走路起伏
+│  │  └─ camera_rig.gd    #   固定斜俯视相机，Q/E 90° 分步旋转
+│  ├─ world/
+│  │  ├─ farm_view.gd     #   射线拾取格子 + 按状态刷新作物外观
+│  │  ├─ proc_textures.gd #   程序化草地/农田格线贴图（零图片依赖）
+│  │  └─ scenery.gd       #   树/灌木/石头/栅栏，固定种子可复现
+│  └─ ui/
+│     ├─ ui_theme.gd      #   星露谷配色 + 木框羊皮纸 9-slice 面板
+│     ├─ ui_icon.gd       #   全部图标用 _draw() 手绘（作物/金币/天气/季节）
+│     ├─ hud.gd           #   HUD 装配 + 按 1080p 基准缩放 + 帮助面板
+│     ├─ hud_status.gd    #   右上：日期 / 时钟 / 天气 / 金币
+│     ├─ hud_hotbar.gd    #   底部居中：12 格快捷栏
+│     ├─ hud_energy.gd    #   右下：体力条
+│     └─ hud_toast.gd     #   浮动提示（自己管生命周期）
 └─ test/
    ├─ unit/               # GUT 单元测试（规则对不对）
    └─ integration/        # GUT 集成测试（接线通不通）
@@ -254,7 +291,9 @@ var velocity := Vector3.ZERO
 
 ---
 
-## 3D 项目的三个「别信默认」
+## 3D 项目的五个「别信默认」
+
+前三条是 M0 的结论，后两条是 M0.5 被 bug 教出来的。
 
 1. **渲染配置和 2D 是反的** —— 2D 用 `Stretch Mode = viewport` + 关抗锯齿；
    **3D 必须 `disabled`**（渲染到低分辨率再放大只会糊）**且必须开 MSAA**
@@ -262,6 +301,14 @@ var velocity := Vector3.ZERO
 2. **`GridMap.cell_size` 一旦铺了格子就绝不能改** —— 它不会更新已有格子。
 3. **鼠标拾取格子用 `Plane.intersects_ray()`**，不要射线查询物理世界 ——
    农田是水平面，数学求交更快更稳，还省掉每格的碰撞体。
+4. **`MeshInstance3D` 不参与物理** —— 它只负责"画出来"。
+   地面若只挂 `MeshInstance3D`，角色会**无限下坠**，而画面看起来只是"按了键没反应"
+   （相机跟随角色一起掉，所以屏幕上一切正常）。
+   地面必须额外挂 `StaticBody3D` + `CollisionShape3D`。
+5. **节点的"正前方"是局部 `−Z`，不是 +Z** —— 也是摄像机的朝向。
+   让角色面朝移动方向要用 `atan2(−dir.x, −dir.z)`；
+   写成 `atan2(dir.x, dir.z)` 会让角色**倒着走**。两处约定必须一致，
+   凡是暴露"我在朝哪"的接口（如 `facing_direction()`）都要按 −Z 写。
 
 ---
 
@@ -270,5 +317,9 @@ var velocity := Vector3.ZERO
 - **本项目锁定 Forward+ 渲染器，因此无法导出 Web 版**。
   Godot 的 Web 导出只支持 Compatibility 渲染器（因为 Godot 尚不支持 WebGPU）。
   这是 M0 就定死的决策，见 DESIGN.md §2.4 —— 若将来需要 Web 版，需要专门做一次材质适配分支。
-- M0 的土地与作物用**代码生成的简易网格**渲染（纯色方块 + 圆锥），
-  不依赖任何素材。M1 会替换为 GridMap + MeshBuilder + 真实 CC0 模型。
+- M0 / M0.5 的**全部美术资源都是代码生成的** —— 草地贴图、农田格线、树/灌木/石头、
+  玩家模型、HUD 面板与图标，没有任何 `.png` / `.glb`。
+  好处是「clone 下来就能跑」；代价是观感上限有限。
+  M1 会替换为 GridMap + 真实 CC0 低模，程序化版本作为素材缺失时的兜底保留。
+- 玩家角色目前是**方块拼的静态小人 + 走路起伏**，没有骨骼动画、没有 8 方向动画。
+  同样属于 M1 的替换范围。
