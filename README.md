@@ -27,20 +27,52 @@
 
 ## 快速开始
 
+### 方式一：一键脚本（推荐）
+
 ```bash
-# 1. 克隆（含 LFS 资源）
 git clone git@github.com:zzp-x/star-game.git
 cd star-game
 git lfs install --local
-
-# 2. 用 Godot 打开项目目录（会自动导入资源、生成 .godot/）
-godot --path . --editor
-
-# 3. 直接跑游戏
-godot --path .
 ```
 
-首次打开需要在编辑器里安装测试框架（见下）。
+克隆完，按需要挑一个：
+
+| 想要 | Windows（双击） | macOS / Linux |
+| --- | --- | --- |
+| **运行游戏** | **`run.bat`** | `./run.sh` |
+| 打开编辑器 | `editor.bat` | `./run.sh editor` |
+| 跑测试 | `test.bat` | `./run.sh test` |
+| 导入检查 + 测试 | — | `./run.sh check` |
+| 只看引擎在哪 | — | `./run.sh where` |
+
+脚本替你做了三件事：
+
+1. **自动找到 Godot** —— 依次查找 `-GodotPath` 参数 → 环境变量 `SG_GODOT` →
+   仓库根目录的 `.godot-path` 文件 → `D:\Godot` 等常见目录 → `PATH`
+2. **首次运行自动导入资源** —— 全新克隆时 `.godot/` 不存在，会先跑一次 `--import`（约 10～40 秒）
+3. **额外参数原样转发** —— 例如 `run.bat --headless`、`./run.sh play --quit-after 120`
+
+找不到引擎时，`run.bat` 会询问是否**自动下载**官方 4.7.2 标准版。
+
+> **Windows 上执行策略禁止运行 `.ps1` 也不影响使用** —— `.bat` 内部走
+> `powershell -ExecutionPolicy Bypass -File`，无需改系统设置。
+> 若你所在环境由组策略强制禁用脚本，请改用下面的方式二。
+
+环境变量（可选）：
+
+| 变量 | 作用 |
+| --- | --- |
+| `SG_GODOT` | 直接指定 Godot 可执行文件绝对路径 |
+| `SG_NO_PAUSE` | 置 1 则脚本结束时不"按任意键"（供 CI 调用） |
+| `SG_NO_DOWNLOAD` | 置 1 则禁止自动下载 Godot |
+
+### 方式二：手动命令
+
+```bash
+godot --path . --editor                               # 打开编辑器（会自动导入资源）
+godot --path .                                        # 直接跑游戏
+godot --headless -s addons/gut/gut_cmdln.gd -gexit    # 跑全部测试
+```
 
 ---
 
@@ -78,6 +110,9 @@ F10        → 过夜（下雨天会自动浇水）
 **已经随仓库提供**（`addons/gut/`，259 个文件已入库），克隆后**无需安装**，
 只需在编辑器里 **Project → Project Settings → Plugins** 勾选启用 **Gut** 即可。
 
+最省事的方式：**双击 `test.bat`**（Windows）或 **`./run.sh test`**（macOS / Linux）。
+等价的原始命令如下：
+
 ```bash
 # 命令行跑全部测试（可接 CI）
 godot --headless -s addons/gut/gut_cmdln.gd -gexit
@@ -107,12 +142,17 @@ godot --headless -s addons/gut/gut_cmdln.gd -gtest=res://test/unit/test_farm_gri
 
 ```
 star-game/
+├─ run.bat / editor.bat / test.bat   # ★ Windows 一键脚本（双击即用）
+├─ run.sh                            # ★ macOS / Linux 等价脚本
+├─ tools/godot.ps1                   # 启动器本体：定位 Godot + 分发动作
 ├─ project.godot          # ★ 渲染器 / 物理 / 输入映射 / 警告等级都在这里
 ├─ .gitattributes         # Git LFS 规则（*.glb / *.wav / *.hdr …）
 ├─ .gutconfig.json        # GUT 测试配置
+├─ .godot-path            # 可选：固定 Godot 路径（一行绝对路径，不提交也可）
 ├─ docs/
-│  ├─ DESIGN.md           # ★ 完整设计方案 v3.0（1844 行）
-│  └─ ROADMAP.md          # 里程碑进度 + v2 待办
+│  ├─ DESIGN.md           # ★ 完整设计方案 v3.0（1973 行）
+│  ├─ ROADMAP.md          # 里程碑进度 + v2 待办
+│  └─ BALANCE.md          # 数值表与改动纪律
 ├─ assets/                # 所有素材（3D 模型统一用 GLB/glTF）
 │  └─ CREDITS.md          # ★ 素材授权与来源
 ├─ data/                  # 数据驱动：Resource 实例（.tres）
@@ -122,7 +162,9 @@ star-game/
 │  ├─ core/               # ★ L2 纯逻辑：规则都在这里，可 GUT 直接测
 │  ├─ data/               # L1 数据：CropData / CropDatabase
 │  ├─ actors/  world/  ui/
-└─ test/unit/             # GUT 单元测试
+└─ test/
+   ├─ unit/               # GUT 单元测试（规则对不对）
+   └─ integration/        # GUT 集成测试（接线通不通）
 ```
 
 ---
